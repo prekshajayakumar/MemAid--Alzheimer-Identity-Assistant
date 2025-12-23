@@ -1,0 +1,22 @@
+# Gradle / build
+.gradle/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Local config
+local.properties
+
+# Native build
+.cxx/
+.externalNativeBuild/
+
+# Mac/Windows junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

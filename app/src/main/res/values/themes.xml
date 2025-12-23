@@ -1,0 +1,8 @@
+<resources>
+    <!-- Compose/M3 theme, no action bar -->
+    <style name="Theme.MyApplication" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Optional: transparent system bars -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
