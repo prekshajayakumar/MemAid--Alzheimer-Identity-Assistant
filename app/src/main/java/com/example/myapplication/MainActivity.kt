@@ -10,6 +10,8 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.db.AppDb
 import com.example.myapplication.data.repo.PeopleRepository
+import com.example.myapplication.ui.admin.AdminDashboardScreen
+import com.example.myapplication.ui.admin.AdminPeopleScreen
 import com.example.myapplication.ui.admin.AdminPinScreen
 import com.example.myapplication.ui.assist.CameraScreen
 import com.example.myapplication.ui.patient.PatientHomeScreen
@@ -23,7 +25,9 @@ private enum class Screen {
     CAMERA,
     UNKNOWN,
     ADMIN_PIN,
-    ADMIN_ROUTINE
+    ADMIN_ROUTINE,
+    ADMIN_DASHBOARD,
+    ADMIN_PEOPLE
 }
 
 class MainActivity : ComponentActivity() {
@@ -77,7 +81,7 @@ class MainActivity : ComponentActivity() {
                         )
 
                         Screen.ADMIN_PIN -> AdminPinScreen(
-                            onSuccess = { screen = Screen.ADMIN_ROUTINE },
+                            onSuccess = { screen = Screen.ADMIN_DASHBOARD },
                             onCancel = { screen = Screen.PATIENT_HOME }
                         )
 
@@ -94,6 +98,24 @@ class MainActivity : ComponentActivity() {
                                 routineVm.delete(item)
                             }
                         )
+                        Screen.ADMIN_DASHBOARD -> AdminDashboardScreen(
+                            onPeople = { screen = Screen.ADMIN_PEOPLE },
+                            onRoutine = { screen = Screen.ADMIN_ROUTINE },
+                            onExit = { screen = Screen.PATIENT_HOME }
+                        )
+
+                        Screen.ADMIN_PEOPLE -> {
+                            val pending by peopleRepo.pending().collectAsState(initial = emptyList())
+                            AdminPeopleScreen(
+                                pending = pending,
+                                onApprove = { id: String, name: String, relation: String ->
+                                scope.launch {
+                                        peopleRepo.approvePending(id, name, relation)
+                                    }
+                                },
+                                onBack = { screen = Screen.ADMIN_DASHBOARD }
+                            )
+                        }
                     }
                 }
             }

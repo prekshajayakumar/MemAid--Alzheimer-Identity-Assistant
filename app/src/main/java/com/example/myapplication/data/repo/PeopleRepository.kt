@@ -54,4 +54,19 @@ class PeopleRepository(
         galleryDao.insertAll(galleryItems)
         return person.personId
     }
+
+    suspend fun approvePending(
+        personId: String,
+        name: String,
+        relation: String
+    ) {
+        val current = db.personDao().getById(personId) ?: return
+        db.personDao().upsert(
+            current.copy(
+                name = name,
+                relation = relation,
+                status = PersonStatus.ACTIVE
+            )
+        )
+    }
 }
