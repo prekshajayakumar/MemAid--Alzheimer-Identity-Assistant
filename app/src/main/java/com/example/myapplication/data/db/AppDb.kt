@@ -9,6 +9,7 @@ import com.example.myapplication.data.dao.EncounterDao
 import com.example.myapplication.data.dao.FaceVectorDao
 import com.example.myapplication.data.dao.PersonDao
 import com.example.myapplication.data.dao.RoutineDao
+import com.example.myapplication.data.dao.GalleryDao
 import com.example.myapplication.data.entities.EncounterEntity
 import com.example.myapplication.data.entities.FaceVectorEntity
 import com.example.myapplication.data.entities.GalleryEntity
@@ -26,14 +27,14 @@ import net.sqlcipher.database.SupportFactory
         EncounterEntity::class,
         RoutineItemEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDb : RoomDatabase() {
 
     abstract fun personDao(): PersonDao
-    // abstract fun galleryDao(): GalleryDao
+    abstract fun galleryDao(): GalleryDao
     abstract fun vectorDao(): FaceVectorDao
     abstract fun encounterDao(): EncounterDao
     abstract fun routineDao(): RoutineDao
