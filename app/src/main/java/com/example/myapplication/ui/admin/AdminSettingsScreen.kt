@@ -12,16 +12,20 @@ import com.example.myapplication.util.CaregiverPrefs
 @Composable
 fun AdminSettingsScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
+
+    // Phone
     var phone by remember { mutableStateOf(CaregiverPrefs.getPhone(ctx) ?: "") }
-    var saved by remember { mutableStateOf(false) }
+    var phoneMsg by remember { mutableStateOf<String?>(null) }
+
+    // PIN
+    var newPin by remember { mutableStateOf("") }
+    var pinMsg by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Admin Settings") },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text("Back") }
-                }
+                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } }
             )
         }
     ) { padding ->
@@ -31,12 +35,16 @@ fun AdminSettingsScreen(onBack: () -> Unit) {
                 .padding(padding)
                 .padding(16.dp)
         ) {
+            // ---- Caregiver Phone ----
             Text("Caregiver Phone Number", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
 
             OutlinedTextField(
                 value = phone,
-                onValueChange = { phone = it },
+                onValueChange = {
+                    phone = it
+                    phoneMsg = null
+                },
                 label = { Text("Phone (e.g. +91XXXXXXXXXX)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -47,16 +55,53 @@ fun AdminSettingsScreen(onBack: () -> Unit) {
             Button(
                 onClick = {
                     CaregiverPrefs.setPhone(ctx, phone.trim())
-                    saved = true
+                    phoneMsg = "Phone saved"
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Save")
+            ) { Text("Save phone") }
+
+            if (phoneMsg != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(phoneMsg!!, color = MaterialTheme.colorScheme.primary)
             }
 
-            if (saved) {
+            Spacer(Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
+            // ---- Admin PIN ----
+            Text("Admin PIN", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = newPin,
+                onValueChange = {
+                    newPin = it.filter(Char::isDigit).take(4)
+                    pinMsg = null
+                },
+                label = { Text("New 4-digit PIN") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Button(
+                onClick = {
+                    if (newPin.length == 4) {
+                        CaregiverPrefs.setPin(ctx, newPin)
+                        pinMsg = "PIN updated"
+                        newPin = ""
+                    } else {
+                        pinMsg = "PIN must be 4 digits"
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Update PIN") }
+
+            if (pinMsg != null) {
                 Spacer(Modifier.height(8.dp))
-                Text("Saved", color = MaterialTheme.colorScheme.primary)
+                Text(pinMsg!!, color = MaterialTheme.colorScheme.primary)
             }
         }
     }

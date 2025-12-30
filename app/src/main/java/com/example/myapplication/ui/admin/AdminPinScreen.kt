@@ -8,7 +8,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.ExperimentalMaterial3Api
-
+import androidx.compose.ui.platform.LocalContext
+import com.example.myapplication.util.CaregiverPrefs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -18,6 +19,7 @@ fun AdminPinScreen(
 ) {
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val ctx = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -58,8 +60,8 @@ fun AdminPinScreen(
 
             Button(
                 onClick = {
-                    // MVP PIN (change later / store securely later)
-                    if (pin == "1234") onSuccess()
+                    val realPin = CaregiverPrefs.getPin(ctx)
+                    if (pin == realPin) onSuccess()
                     else error = "Wrong PIN"
                 },
                 modifier = Modifier.fillMaxWidth()
