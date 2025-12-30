@@ -7,6 +7,7 @@ import com.example.myapplication.data.db.AppDb
 import com.example.myapplication.data.entities.RepeatRule
 import com.example.myapplication.data.entities.RoutineItemEntity
 import com.example.myapplication.data.repo.RoutineRepository
+import com.example.myapplication.util.RoutineReminderScheduler
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -15,6 +16,8 @@ class RoutineViewModel(app: Application) : AndroidViewModel(app) {
 
     private val db = AppDb.get(app)
     private val repo = RoutineRepository(db.routineDao())
+
+    private val ctx = app.applicationContext
 
     val allRoutines: StateFlow<List<RoutineItemEntity>> =
         repo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -26,26 +29,32 @@ class RoutineViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addQuick(label: String, timeMinutes: Int, repeatRule: RepeatRule, date: String?) {
         viewModelScope.launch {
-            repo.upsert(
-                RoutineItemEntity(
-                    label = label.trim(),
-                    timeMinutes = timeMinutes,
-                    repeatRule = repeatRule,
-                    date = date
-                )
+            val item = RoutineItemEntity(
+                label = label.trim(),
+                timeMinutes = timeMinutes,
+                repeatRule = repeatRule,
+                date = date,
+                enabled = true
             )
+            repo.upsert(item)
+            RoutineReminderScheduler.schedule(ctx, item)
         }
     }
 
     fun toggleEnabled(item: RoutineItemEntity, enabled: Boolean) {
         viewModelScope.launch {
             db.routineDao().setEnabled(item.routineId, enabled)
+
+            val updated = item.copy(enabled = enabled)
+            if (enabled) RoutineReminderScheduler.schedule(ctx, updated)
+            else RoutineReminderScheduler.cancel(ctx, updated)
         }
     }
 
     fun delete(item: RoutineItemEntity) {
         viewModelScope.launch {
             repo.delete(item)
+            RoutineReminderScheduler.cancel(ctx, item)
         }
     }
 }

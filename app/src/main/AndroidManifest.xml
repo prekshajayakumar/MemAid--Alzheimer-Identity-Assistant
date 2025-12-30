@@ -1,10 +1,13 @@
 <!-- app/src/main/AndroidManifest.xml -->
 <manifest package="com.example.myapplication" xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:allowBackup="true"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MyApplication">
+        android:theme="@style/Theme.MyApplication"
+        android:name=".App">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -13,6 +16,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <receiver
+            android:name=".receiver.RoutineReminderReceiver"
+            android:exported="false" />
     </application>
-    <uses-permission android:name="android.permission.CAMERA" />
 </manifest>
