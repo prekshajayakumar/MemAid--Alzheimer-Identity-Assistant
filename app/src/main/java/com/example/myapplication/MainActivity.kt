@@ -19,9 +19,12 @@ import com.example.myapplication.ui.patient.UnknownPersonScreen
 import com.example.myapplication.ui.routine.AdminRoutineScreen
 import com.example.myapplication.ui.routine.RoutineViewModel
 import com.example.myapplication.ui.admin.AdminSettingsScreen
-import com.example.myapplication.util.CaregiverPrefs
-import com.example.myapplication.util.CallCaregiver
 import kotlinx.coroutines.launch
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 
 private enum class Screen {
     PATIENT_HOME,
@@ -53,84 +56,104 @@ class MainActivity : ComponentActivity() {
                     var screen by remember { mutableStateOf(Screen.PATIENT_HOME) }
                     var lastCapturedPath by remember { mutableStateOf<String?>(null) }
 
-                    when (screen) {
+                    val snack = remember { SnackbarHostState() }
 
-                        Screen.PATIENT_HOME -> PatientHomeScreen(
-                            todayItems = today,
-                            onRecognizePerson = { screen = Screen.CAMERA },
-                            onCallCaregiver = {
-                                val phone = com.example.myapplication.util.CaregiverPrefs.getPhone(this)
-                                if (!phone.isNullOrBlank()) {
-                                    com.example.myapplication.util.CallCaregiver.dial(this, phone)
-                                }
-                                screen = Screen.PATIENT_HOME
-                            },
-                                    onOpenAdminForNow = { screen = Screen.ADMIN_PIN }
-                        )
-
-                        Screen.CAMERA -> CameraScreen(
-                            onImageCaptured = { path ->
-                                lastCapturedPath = path
-                                screen = Screen.UNKNOWN
-                            },
-                            onCancel = { screen = Screen.PATIENT_HOME }
-                        )
-
-                        Screen.UNKNOWN -> UnknownPersonScreen(
-                            onHelpMeRemember = {
-                                lastCapturedPath?.let { path ->
-                                    scope.launch {
-                                        peopleRepo.createPendingFromPhotoPaths(listOf(path))
-                                        screen = Screen.PATIENT_HOME
-                                    }
-                                }
-                            },
-                            onCallCaregiver = {
-                                screen = Screen.PATIENT_HOME
-                            }
-                        )
-
-                        Screen.ADMIN_PIN -> AdminPinScreen(
-                            onSuccess = { screen = Screen.ADMIN_DASHBOARD },
-                            onCancel = { screen = Screen.PATIENT_HOME }
-                        )
-
-                        Screen.ADMIN_ROUTINE -> AdminRoutineScreen(
-                            allItems = all,
-                            onBack = { screen = Screen.PATIENT_HOME },
-                            onAdd = { label, time, rule, date ->
-                                routineVm.addQuick(label, time, rule, date)
-                            },
-                            onToggle = { item, enabled ->
-                                routineVm.toggleEnabled(item, enabled)
-                            },
-                            onDelete = { item ->
-                                routineVm.delete(item)
-                            }
-                        )
-                        Screen.ADMIN_DASHBOARD -> AdminDashboardScreen(
-                            onPeople = { screen = Screen.ADMIN_PEOPLE },
-                            onRoutine = { screen = Screen.ADMIN_ROUTINE },
-                            onSettings = { screen = Screen.ADMIN_SETTINGS },
-                            onExit = { screen = Screen.PATIENT_HOME }
-                        )
-
-                        Screen.ADMIN_PEOPLE -> {
-                            val pending by peopleRepo.pending().collectAsState(initial = emptyList())
-                            AdminPeopleScreen(
-                                pending = pending,
-                                onApprove = { id: String, name: String, relation: String ->
-                                scope.launch {
-                                        peopleRepo.approvePending(id, name, relation)
-                                    }
-                                },
-                                onBack = { screen = Screen.ADMIN_DASHBOARD }
+                    fun callCaregiver() {
+                        val phone =
+                            com.example.myapplication.util.CaregiverPrefs.getPhone(this@MainActivity)
+                        if (phone.isNullOrBlank()) {
+                            scope.launch { snack.showSnackbar("Set caregiver number in Admin → Settings") }
+                        } else {
+                            com.example.myapplication.util.CallCaregiver.dial(
+                                this@MainActivity,
+                                phone
                             )
                         }
+                    }
 
-                        Screen.ADMIN_SETTINGS -> AdminSettingsScreen(
-                            onBack = { screen = Screen.ADMIN_DASHBOARD }
-                        )
+                    Scaffold(
+                        snackbarHost = { SnackbarHost(hostState = snack) }
+                    ) { padding ->
+
+                        Box(modifier = Modifier.padding(padding)) {
+
+                            when (screen) {
+
+                                Screen.PATIENT_HOME -> PatientHomeScreen(
+                                    todayItems = today,
+                                    onRecognizePerson = { screen = Screen.CAMERA },
+                                    onCallCaregiver = {
+                                        callCaregiver()
+                                        screen = Screen.PATIENT_HOME
+                                    },
+                                    onOpenAdminForNow = { screen = Screen.ADMIN_PIN }
+                                )
+
+                                Screen.CAMERA -> CameraScreen(
+                                    onImageCaptured = { path ->
+                                        lastCapturedPath = path
+                                        screen = Screen.UNKNOWN
+                                    },
+                                    onCancel = { screen = Screen.PATIENT_HOME }
+                                )
+
+                                Screen.UNKNOWN -> UnknownPersonScreen(
+                                    onHelpMeRemember = {
+                                        lastCapturedPath?.let { path ->
+                                            scope.launch {
+                                                peopleRepo.createPendingFromPhotoPaths(listOf(path))
+                                                screen = Screen.PATIENT_HOME
+                                            }
+                                        }
+                                    },
+                                    onCallCaregiver = {
+                                        callCaregiver()
+                                        screen = Screen.PATIENT_HOME
+                                    }
+                                )
+
+                                Screen.ADMIN_PIN -> AdminPinScreen(
+                                    onSuccess = { screen = Screen.ADMIN_DASHBOARD },
+                                    onCancel = { screen = Screen.PATIENT_HOME }
+                                )
+
+                                Screen.ADMIN_ROUTINE -> AdminRoutineScreen(
+                                    allItems = all,
+                                    onBack = { screen = Screen.PATIENT_HOME },
+                                    onAdd = { label, time, rule, date ->
+                                        routineVm.addQuick(label, time, rule, date)
+                                    },
+                                    onToggle = { item, enabled ->
+                                        routineVm.toggleEnabled(item, enabled)
+                                    },
+                                    onDelete = { item ->
+                                        routineVm.delete(item)
+                                    }
+                                )
+
+                                Screen.ADMIN_DASHBOARD -> AdminDashboardScreen(
+                                    onPeople = { screen = Screen.ADMIN_PEOPLE },
+                                    onRoutine = { screen = Screen.ADMIN_ROUTINE },
+                                    onSettings = { screen = Screen.ADMIN_SETTINGS },
+                                    onExit = { screen = Screen.PATIENT_HOME }
+                                )
+
+                                Screen.ADMIN_PEOPLE -> {
+                                    val pending by peopleRepo.pending().collectAsState(initial = emptyList())
+                                    AdminPeopleScreen(
+                                        pending = pending,
+                                        onApprove = { id, name, relation ->
+                                            scope.launch { peopleRepo.approvePending(id, name, relation) }
+                                        },
+                                        onBack = { screen = Screen.ADMIN_DASHBOARD }
+                                    )
+                                }
+
+                                Screen.ADMIN_SETTINGS -> AdminSettingsScreen(
+                                    onBack = { screen = Screen.ADMIN_DASHBOARD }
+                                )
+                            }
+                        }
                     }
                 }
             }
