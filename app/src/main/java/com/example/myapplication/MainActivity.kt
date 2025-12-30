@@ -18,6 +18,9 @@ import com.example.myapplication.ui.patient.PatientHomeScreen
 import com.example.myapplication.ui.patient.UnknownPersonScreen
 import com.example.myapplication.ui.routine.AdminRoutineScreen
 import com.example.myapplication.ui.routine.RoutineViewModel
+import com.example.myapplication.ui.admin.AdminSettingsScreen
+import com.example.myapplication.util.CaregiverPrefs
+import com.example.myapplication.util.CallCaregiver
 import kotlinx.coroutines.launch
 
 private enum class Screen {
@@ -27,7 +30,8 @@ private enum class Screen {
     ADMIN_PIN,
     ADMIN_ROUTINE,
     ADMIN_DASHBOARD,
-    ADMIN_PEOPLE
+    ADMIN_PEOPLE,
+    ADMIN_SETTINGS
 }
 
 class MainActivity : ComponentActivity() {
@@ -54,8 +58,14 @@ class MainActivity : ComponentActivity() {
                         Screen.PATIENT_HOME -> PatientHomeScreen(
                             todayItems = today,
                             onRecognizePerson = { screen = Screen.CAMERA },
-                            onCallCaregiver = {},
-                            onOpenAdminForNow = { screen = Screen.ADMIN_PIN }
+                            onCallCaregiver = {
+                                val phone = com.example.myapplication.util.CaregiverPrefs.getPhone(this)
+                                if (!phone.isNullOrBlank()) {
+                                    com.example.myapplication.util.CallCaregiver.dial(this, phone)
+                                }
+                                screen = Screen.PATIENT_HOME
+                            },
+                                    onOpenAdminForNow = { screen = Screen.ADMIN_PIN }
                         )
 
                         Screen.CAMERA -> CameraScreen(
@@ -101,6 +111,7 @@ class MainActivity : ComponentActivity() {
                         Screen.ADMIN_DASHBOARD -> AdminDashboardScreen(
                             onPeople = { screen = Screen.ADMIN_PEOPLE },
                             onRoutine = { screen = Screen.ADMIN_ROUTINE },
+                            onSettings = { screen = Screen.ADMIN_SETTINGS },
                             onExit = { screen = Screen.PATIENT_HOME }
                         )
 
@@ -116,6 +127,10 @@ class MainActivity : ComponentActivity() {
                                 onBack = { screen = Screen.ADMIN_DASHBOARD }
                             )
                         }
+
+                        Screen.ADMIN_SETTINGS -> AdminSettingsScreen(
+                            onBack = { screen = Screen.ADMIN_DASHBOARD }
+                        )
                     }
                 }
             }

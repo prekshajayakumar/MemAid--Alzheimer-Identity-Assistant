@@ -82,4 +82,8 @@ dependencies {
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+
+    //encryption
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
 }

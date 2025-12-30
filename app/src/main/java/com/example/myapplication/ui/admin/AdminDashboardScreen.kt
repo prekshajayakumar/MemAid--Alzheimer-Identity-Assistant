@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 fun AdminDashboardScreen(
     onPeople: () -> Unit,
     onRoutine: () -> Unit,
+    onSettings: () -> Unit,
     onExit: () -> Unit
 ) {
     Column(
@@ -30,6 +31,11 @@ fun AdminDashboardScreen(
 
         Button(onClick = onRoutine, modifier = Modifier.fillMaxWidth()) {
             Text("Routine")
+        }
+        Spacer(Modifier.height(12.dp))
+
+        Button(onClick = onSettings, modifier = Modifier.fillMaxWidth()) {
+            Text("Settings")
         }
         Spacer(Modifier.height(12.dp))
 
