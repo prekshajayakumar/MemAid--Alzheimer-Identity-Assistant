@@ -4,16 +4,24 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 object EmbeddingCodec {
-    fun floatsToBytes(arr: FloatArray): ByteArray {
-        val bb = ByteBuffer.allocate(arr.size * 4).order(ByteOrder.LITTLE_ENDIAN)
-        arr.forEach { bb.putFloat(it) }
-        return bb.array()
+
+    fun toByteArray(vector: FloatArray): ByteArray {
+        val buffer = ByteBuffer.allocate(vector.size * 4)
+        buffer.order(ByteOrder.nativeOrder())
+        for (v in vector) {
+            buffer.putFloat(v)
+        }
+        return buffer.array()
     }
 
-    fun bytesToFloats(bytes: ByteArray): FloatArray {
-        val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        val out = FloatArray(bytes.size / 4)
-        for (i in out.indices) out[i] = bb.getFloat()
-        return out
+    fun fromByteArray(bytes: ByteArray): FloatArray {
+        val buffer = ByteBuffer.wrap(bytes)
+        buffer.order(ByteOrder.nativeOrder())
+
+        val floats = FloatArray(bytes.size / 4)
+        for (i in floats.indices) {
+            floats[i] = buffer.getFloat()
+        }
+        return floats
     }
 }
