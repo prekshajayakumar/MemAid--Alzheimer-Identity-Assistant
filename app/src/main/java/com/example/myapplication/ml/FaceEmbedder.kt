@@ -4,11 +4,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
+import java.io.Closeable
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.sqrt
 
-class FaceEmbedder(context: Context) {
+class FaceEmbedder(context: Context) : Closeable {
 
     private val interpreter: Interpreter
 
@@ -17,21 +18,26 @@ class FaceEmbedder(context: Context) {
 
     init {
         val model = FileUtil.loadMappedFile(context, "mobilefacenet.tflite")
-        interpreter = Interpreter(model)
+
+        val opts = Interpreter.Options().apply {
+            setNumThreads(2)
+        }
+
+        interpreter = Interpreter(model, opts)
     }
 
     fun embed(faceBitmap: Bitmap): FloatArray {
-        val input: ByteBuffer = bitmapToInputBuffer(faceBitmap, inputSize)
+        val input: ByteBuffer = bitmapToInputBuffer(faceBitmap)
         val output = Array(1) { FloatArray(embeddingDim) }
 
         interpreter.run(input, output)
 
-        return l2Normalize(output[0])
+        l2NormalizeInPlace(output[0])
+        return output[0]
     }
 
-    private fun bitmapToInputBuffer(bitmap: Bitmap, inputSize: Int): ByteBuffer {
+    private fun bitmapToInputBuffer(bitmap: Bitmap): ByteBuffer {
         val resized = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
-
         val inputBuffer = ByteBuffer.allocateDirect(4 * inputSize * inputSize * 3)
         inputBuffer.order(ByteOrder.nativeOrder())
 
@@ -52,15 +58,20 @@ class FaceEmbedder(context: Context) {
         return inputBuffer
     }
 
-    private fun l2Normalize(vector: FloatArray): FloatArray {
+    private fun l2NormalizeInPlace(v: FloatArray) {
         var sum = 0f
-        for (v in vector) sum += v * v
-        val norm = sqrt(sum)
+        for (x in v) sum += x * x
 
-        return if (norm > 0f) {
-            vector.map { it / norm }.toFloatArray()
-        } else {
-            vector
+        val norm = sqrt(sum)
+        if (norm <= 1e-12f) return
+
+        val inv = 1f / norm
+        for (i in v.indices) {
+            v[i] *= inv
         }
+    }
+
+    override fun close() {
+        interpreter.close()
     }
 }
