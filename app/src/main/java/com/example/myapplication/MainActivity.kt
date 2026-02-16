@@ -166,7 +166,12 @@ class MainActivity : ComponentActivity() {
                                             onApprove = { id, name, relation ->
                                                 touchAdminSession()
                                                 scope.launch {
-                                                    peopleRepo.approvePending(id, name, relation)
+                                                    peopleRepo.approvePendingWithEmbeddings(
+                                                        appContext = this@MainActivity.applicationContext,
+                                                        personId = id,
+                                                        name = name,
+                                                        relation = relation
+                                                    )
                                                 }
                                             },
                                             onBack = { screen = Screen.ADMIN_DASHBOARD }

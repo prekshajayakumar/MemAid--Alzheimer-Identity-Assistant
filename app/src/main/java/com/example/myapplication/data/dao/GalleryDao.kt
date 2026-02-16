@@ -10,4 +10,7 @@ interface GalleryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<GalleryEntity>)
+
+    @Query("SELECT * FROM gallery")
+    suspend fun all(): List<GalleryEntity>
 }
