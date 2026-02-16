@@ -28,6 +28,9 @@ import com.example.myapplication.util.CallCaregiver
 import com.example.myapplication.util.CaregiverPrefs
 import com.example.myapplication.util.NotificationChannels
 import kotlinx.coroutines.launch
+import android.graphics.BitmapFactory
+import com.example.myapplication.ml.FaceRecognitionEngine
+import com.example.myapplication.ui.patient.RecognizedPersonScreen
 
 private enum class Screen {
     PATIENT_HOME,
@@ -37,7 +40,8 @@ private enum class Screen {
     ADMIN_DASHBOARD,
     ADMIN_PEOPLE,
     ADMIN_ROUTINE,
-    ADMIN_SETTINGS
+    ADMIN_SETTINGS,
+    RECOGNIZED,
 }
 
 class MainActivity : ComponentActivity() {
@@ -53,9 +57,18 @@ class MainActivity : ComponentActivity() {
                     val routineVm: RoutineViewModel = viewModel()
                     val today by routineVm.todaysRoutines.collectAsState()
                     val all by routineVm.allRoutines.collectAsState()
+                    val recogEngine = remember { FaceRecognitionEngine(this@MainActivity.applicationContext) }
+                    var recognizedName by remember { mutableStateOf<String?>(null) }
+                    var recognizedRelation by remember { mutableStateOf<String?>(null) }
+
 
                     val scope = rememberCoroutineScope()
                     val db = AppDb.get(this)
+                    LaunchedEffect(Unit) {
+                        kotlinx.coroutines.delay(3000)
+                        com.example.myapplication.ml.ThresholdExperiment.run(db)
+                    }
+
                     val peopleRepo = remember { PeopleRepository(db) }
 
                     var screen by remember { mutableStateOf(Screen.PATIENT_HOME) }
@@ -106,10 +119,51 @@ class MainActivity : ComponentActivity() {
                                     onOpenAdminForNow = { screen = Screen.ADMIN_PIN }
                                 )
 
+                                Screen.RECOGNIZED -> RecognizedPersonScreen(
+                                    name = recognizedName ?: "Unknown",
+                                    relation = recognizedRelation,
+                                    onDone = { screen = Screen.PATIENT_HOME }
+                                )
+
                                 Screen.CAMERA -> CameraScreen(
                                     onImageCaptured = { path ->
                                         lastCapturedPath = path
-                                        screen = Screen.UNKNOWN
+
+                                        scope.launch {
+                                            // 1) Load bitmap
+                                            val bmp = BitmapFactory.decodeFile(path)
+                                            if (bmp == null) {
+                                                screen = Screen.UNKNOWN
+                                                return@launch
+                                            }
+
+                                            // 2) Detect + crop face
+                                            val rect = com.example.myapplication.ml.FaceCropper.detectLargestFace(bmp)
+                                            val face = rect?.let { com.example.myapplication.ml.FaceCropper.crop(bmp, it) }
+
+                                            if (face == null) {
+                                                screen = Screen.UNKNOWN
+                                                return@launch
+                                            }
+
+                                            // 3) Recognize
+                                            val personId = recogEngine.recognize(face)
+                                            if (personId == null) {
+                                                screen = Screen.UNKNOWN
+                                                return@launch
+                                            }
+
+                                            // 4) Fetch identity
+                                            val person = db.personDao().getById(personId)
+                                            if (person?.name.isNullOrBlank()) {
+                                                screen = Screen.UNKNOWN
+                                                return@launch
+                                            }
+
+                                            recognizedName = person!!.name
+                                            recognizedRelation = person.relation
+                                            screen = Screen.RECOGNIZED
+                                        }
                                     },
                                     onCancel = { screen = Screen.PATIENT_HOME }
                                 )
