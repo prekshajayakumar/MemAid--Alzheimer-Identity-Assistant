@@ -10,11 +10,13 @@ import com.example.myapplication.data.dao.FaceVectorDao
 import com.example.myapplication.data.dao.PersonDao
 import com.example.myapplication.data.dao.RoutineDao
 import com.example.myapplication.data.dao.GalleryDao
+import com.example.myapplication.data.dao.RecognitionLogDao
 import com.example.myapplication.data.entities.EncounterEntity
 import com.example.myapplication.data.entities.FaceVectorEntity
 import com.example.myapplication.data.entities.GalleryEntity
 import com.example.myapplication.data.entities.PersonEntity
 import com.example.myapplication.data.entities.RoutineItemEntity
+import com.example.myapplication.data.entities.RecognitionLogEntity
 import com.example.myapplication.util.KeyStoreHelper
 import net.sqlcipher.database.SQLiteDatabase
 import net.sqlcipher.database.SupportFactory
@@ -25,7 +27,8 @@ import net.sqlcipher.database.SupportFactory
         GalleryEntity::class,
         FaceVectorEntity::class,
         EncounterEntity::class,
-        RoutineItemEntity::class
+        RoutineItemEntity::class,
+        RecognitionLogEntity::class
     ],
     version = 2,
     exportSchema = false
@@ -38,6 +41,7 @@ abstract class AppDb : RoomDatabase() {
     abstract fun vectorDao(): FaceVectorDao
     abstract fun encounterDao(): EncounterDao
     abstract fun routineDao(): RoutineDao
+    abstract fun recognitionLogDao(): RecognitionLogDao
 
     companion object {
         @Volatile private var INSTANCE: AppDb? = null

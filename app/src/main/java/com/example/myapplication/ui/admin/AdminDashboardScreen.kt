@@ -12,7 +12,8 @@ fun AdminDashboardScreen(
     onPeople: () -> Unit,
     onRoutine: () -> Unit,
     onSettings: () -> Unit,
-    onExit: () -> Unit
+    onExit: () -> Unit,
+    onLogs: () -> Unit
 ) {
     Column(
         Modifier
@@ -42,5 +43,10 @@ fun AdminDashboardScreen(
         OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
             Text("Exit Admin")
         }
+
+        Button(onClick = onLogs, modifier = Modifier.fillMaxWidth()) {
+            Text("Logs")
+        }
+        Spacer(Modifier.height(12.dp))
     }
 }

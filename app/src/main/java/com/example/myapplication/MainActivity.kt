@@ -21,6 +21,9 @@ import com.example.myapplication.ui.routine.AdminRoutineScreen
 import com.example.myapplication.ui.routine.RoutineViewModel
 import com.example.myapplication.util.CallCaregiver
 import com.example.myapplication.util.CaregiverPrefs
+import com.example.myapplication.data.entities.RecognitionLogEntity
+import com.example.myapplication.data.entities.RecognitionOutcome
+import com.example.myapplication.data.repo.LogsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,7 +37,8 @@ private enum class Screen {
     ADMIN_DASHBOARD,
     ADMIN_PEOPLE,
     ADMIN_ROUTINE,
-    ADMIN_SETTINGS
+    ADMIN_SETTINGS,
+    ADMIN_LOGS
 }
 
 class MainActivity : ComponentActivity() {
@@ -51,6 +55,7 @@ class MainActivity : ComponentActivity() {
                     val all by routineVm.allRoutines.collectAsState()
                     val db = remember { AppDb.get(applicationContext) }
                     val peopleRepo = remember { PeopleRepository(db) }
+                    val logsRepo = remember { LogsRepository(db.recognitionLogDao()) }
 
                     val recogEngine = remember {
                         FaceRecognitionEngine(applicationContext)
@@ -117,9 +122,13 @@ class MainActivity : ComponentActivity() {
 
                                             val bmp = BitmapFactory.decodeFile(path)
                                             if (bmp == null) {
-                                                withContext(Dispatchers.Main) {
-                                                    screen = Screen.UNKNOWN
-                                                }
+                                                logsRepo.insert(
+                                                    RecognitionLogEntity(
+                                                        outcome = RecognitionOutcome.IMAGE_DECODE_FAIL,
+                                                        imagePath = path
+                                                    )
+                                                )
+                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
                                                 return@launch
                                             }
 
@@ -127,29 +136,50 @@ class MainActivity : ComponentActivity() {
                                             val face = rect?.let { FaceCropper.crop(bmp, it) }
 
                                             if (face == null) {
-                                                withContext(Dispatchers.Main) {
-                                                    screen = Screen.UNKNOWN
-                                                }
+                                                logsRepo.insert(
+                                                    RecognitionLogEntity(
+                                                        outcome = RecognitionOutcome.NO_FACE,
+                                                        imagePath = path
+                                                    )
+                                                )
+                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
                                                 return@launch
                                             }
 
                                             val personId = recogEngine.recognize(face)
 
                                             if (personId == null) {
-                                                withContext(Dispatchers.Main) {
-                                                    screen = Screen.UNKNOWN
-                                                }
+                                                logsRepo.insert(
+                                                    RecognitionLogEntity(
+                                                        outcome = RecognitionOutcome.UNKNOWN,
+                                                        imagePath = path
+                                                    )
+                                                )
+                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
                                                 return@launch
                                             }
 
                                             val person = db.personDao().getById(personId)
 
                                             if (person?.name.isNullOrBlank()) {
-                                                withContext(Dispatchers.Main) {
-                                                    screen = Screen.UNKNOWN
-                                                }
+                                                logsRepo.insert(
+                                                    RecognitionLogEntity(
+                                                        outcome = RecognitionOutcome.UNKNOWN,
+                                                        personId = personId,
+                                                        imagePath = path
+                                                    )
+                                                )
+                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
                                                 return@launch
                                             }
+
+                                            logsRepo.insert(
+                                                RecognitionLogEntity(
+                                                    outcome = RecognitionOutcome.RECOGNIZED,
+                                                    personId = personId,
+                                                    imagePath = path
+                                                )
+                                            )
 
                                             withContext(Dispatchers.Main) {
                                                 recognizedName = person!!.name
@@ -217,7 +247,8 @@ class MainActivity : ComponentActivity() {
                                             onExit = {
                                                 adminAuthedAt = null
                                                 screen = Screen.PATIENT_HOME
-                                            }
+                                            },
+                                            onLogs = { screen = Screen.ADMIN_LOGS }
                                         )
                                     }
                                 }
@@ -281,6 +312,22 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         touchAdminSession()
                                         AdminSettingsScreen(
+                                            onBack = { screen = Screen.ADMIN_DASHBOARD }
+                                        )
+                                    }
+                                }
+
+                                Screen.ADMIN_LOGS -> {
+                                    if (isAdminExpired()) {
+                                        screen = Screen.ADMIN_PIN
+                                    } else {
+                                        touchAdminSession()
+                                        val logsVm: LogsViewModel = viewModel()
+                                        val logs by logsVm.logs.collectAsState(initial = emptyList())
+
+                                        AdminLogsScreen(
+                                            logs = logs,
+                                            onClear = { logsVm.clearAll() },
                                             onBack = { screen = Screen.ADMIN_DASHBOARD }
                                         )
                                     }
