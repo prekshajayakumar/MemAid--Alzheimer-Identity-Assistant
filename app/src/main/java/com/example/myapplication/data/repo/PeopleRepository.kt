@@ -4,15 +4,16 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import com.example.myapplication.data.db.AppDb
 import com.example.myapplication.data.entities.FaceVectorEntity
+import com.example.myapplication.data.entities.GalleryEntity
 import com.example.myapplication.data.entities.PersonEntity
 import com.example.myapplication.data.entities.PersonStatus
 import com.example.myapplication.ml.EmbeddingCodec
 import com.example.myapplication.ml.FaceCropper
 import com.example.myapplication.ml.FaceEmbedder
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
-import java.io.File
+import kotlinx.coroutines.withContext
+import kotlin.math.sqrt
 
 class PeopleRepository(
     private val db: AppDb
@@ -24,21 +25,14 @@ class PeopleRepository(
     fun allPeople(): Flow<List<PersonEntity>> = personDao.observeAll()
     fun pending(): Flow<List<PersonEntity>> = personDao.observeByStatus(PersonStatus.PENDING)
 
+    // Optional legacy
     suspend fun addPending(name: String, relation: String): String {
         val p = PersonEntity(name = name, relation = relation, status = PersonStatus.PENDING)
         personDao.upsert(p)
         return p.personId
     }
 
-    suspend fun approve(personId: String) {
-        val current = personDao.getById(personId) ?: return
-        personDao.upsert(current.copy(status = PersonStatus.ACTIVE))
-    }
-
-    suspend fun addActive(name: String, relation: String) {
-        personDao.upsert(PersonEntity(name = name, relation = relation, status = PersonStatus.ACTIVE))
-    }
-
+    // Patient flow: pending person with only photos (no identity)
     suspend fun createPendingFromPhotoPaths(imagePaths: List<String>): String {
         val person = PersonEntity(
             name = null,
@@ -49,7 +43,7 @@ class PeopleRepository(
         personDao.upsert(person)
 
         val galleryItems = imagePaths.map { path ->
-            com.example.myapplication.data.entities.GalleryEntity(
+            GalleryEntity(
                 personId = person.personId,
                 imagePath = path,
                 pose = null,
@@ -62,7 +56,13 @@ class PeopleRepository(
         return person.personId
     }
 
-    // ✅ RESEARCH-GRADE: approve + create embeddings for all saved photos
+    /**
+     * Production-grade approval:
+     * 1) generate + store embeddings (off main thread)
+     * 2) mark ACTIVE with name + relation
+     *
+     * Reason: ensures we only activate a person after at least one usable vector exists.
+     */
     suspend fun approvePendingWithEmbeddings(
         appContext: Context,
         personId: String,
@@ -71,7 +71,13 @@ class PeopleRepository(
     ) {
         val current = personDao.getById(personId) ?: return
 
-        // 1) Update identity fields + activate
+        // 1) Generate/store vectors first (so ACTIVE implies “recognizable”)
+        val stored = generateAndStoreEmbeddings(appContext, personId)
+
+        // If no face vectors were produced, keep them PENDING (admin can retry with better photo)
+        if (stored == 0) return
+
+        // 2) Activate + set identity
         personDao.upsert(
             current.copy(
                 name = name.trim(),
@@ -79,90 +85,56 @@ class PeopleRepository(
                 status = PersonStatus.ACTIVE
             )
         )
+    }
 
-        // 2) Load all gallery photos for this person
-        val photos = galleryDao.listForPerson(personId)
-        if (photos.isEmpty()) return
+    /**
+     * Returns number of vectors stored.
+     * Clears old vectors first to avoid stale data.
+     */
+    private suspend fun generateAndStoreEmbeddings(
+        context: Context,
+        personId: String
+    ): Int = withContext(Dispatchers.Default) {
 
-        val embedder = FaceEmbedder(appContext)
+        val gallery = galleryDao.listForPerson(personId)
+        if (gallery.isEmpty()) return@withContext 0
 
-        // 3) For each photo: detect face → crop → embed → store vector
+        val embedder = FaceEmbedder(context)
         val vectors = mutableListOf<FaceVectorEntity>()
 
-        for (p in photos) {
-            val file = File(p.imagePath)
-            if (!file.exists()) continue
+        for (g in gallery) {
+            val bmp = BitmapFactory.decodeFile(g.imagePath) ?: continue
 
-            val bmp = BitmapFactory.decodeFile(file.absolutePath) ?: continue
+            val rect = FaceCropper.detectLargestFace(bmp) ?: continue
+            val face = FaceCropper.crop(bmp, rect) ?: continue
 
-            val faceRect = FaceCropper.detectLargestFace(bmp) ?: continue
-            val cropped = FaceCropper.crop(bmp, faceRect) ?: continue
-
-            val emb = embedder.embed(cropped)
-            val bytes = EmbeddingCodec.toByteArray(emb)
-
+            val embedding = embedder.embed(face)
+            val norm = l2Normalize(embedding)
             vectors.add(
                 FaceVectorEntity(
-                    personId = personId,
-                    embedding = bytes,
-                    quality = 1.0f
-                )
-            )
-        }
-
-        if (vectors.isNotEmpty()) {
-            vectorDao.insertAll(vectors)
-        }
-    }
-
-    suspend fun approvePending(
-        context: Context,
-        personId: String,
-        name: String,
-        relation: String
-    ) {
-        val current = db.personDao().getById(personId) ?: return
-
-        db.personDao().upsert(
-            current.copy(
-                name = name,
-                relation = relation,
-                status = PersonStatus.ACTIVE
-            )
-        )
-
-        generateAndStoreEmbeddings(context, personId)
-    }
-
-    suspend fun generateAndStoreEmbeddings(context: Context, personId: String) =
-        withContext(Dispatchers.Default) {
-
-            val gallery = db.galleryDao().listForPerson(personId)
-            if (gallery.isEmpty()) return@withContext
-
-            val embedder = FaceEmbedder(context)
-
-            val vectors = mutableListOf<FaceVectorEntity>()
-
-            for (g in gallery) {
-                val bmp = BitmapFactory.decodeFile(g.imagePath) ?: continue
-
-                val rect = FaceCropper.detectLargestFace(bitmap = bmp) ?: continue
-                val face = FaceCropper.crop(bitmap = bmp, rect = rect) ?: continue
-
-                val embedding = embedder.embed(faceBitmap = face)
-
-                vectors.add(
-                    FaceVectorEntity(
                         personId = personId,
-                        embedding = EmbeddingCodec.toByteArray(embedding),
-                        quality = 1f
-                    )
+                        embedding = EmbeddingCodec.toByteArray(norm),
+                    quality = 1f
                 )
-            }
-
-            if (vectors.isNotEmpty()) {
-                db.vectorDao().insertAll(vectors)
-            }
+            )
         }
+
+        if (vectors.isEmpty()) return@withContext 0
+
+        // Replace vectors atomically for this person (prevents duplicates)
+        vectorDao.deleteForPerson(personId)
+        vectorDao.insertAll(vectors)
+
+        return@withContext vectors.size
+    }
+
+    private fun l2Normalize(x: FloatArray, eps: Float = 1e-12f): FloatArray {
+        var sumSq = 0f
+        for (v in x) sumSq += v * v
+        val norm = kotlin.math.sqrt(sumSq).coerceAtLeast(eps)
+
+        val out = FloatArray(x.size)
+        for (i in x.indices) out[i] = x[i] / norm
+        return out
+    }
 }

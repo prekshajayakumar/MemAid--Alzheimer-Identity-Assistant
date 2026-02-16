@@ -35,10 +35,7 @@ object FaceCropper {
         val right = rect.right.coerceAtMost(bitmap.width)
         val bottom = rect.bottom.coerceAtMost(bitmap.height)
 
-        val w = (right - left)
-        val h = (bottom - top)
-        if (w <= 0 || h <= 0) return null
-
-        return Bitmap.createBitmap(bitmap, left, top, w, h)
+        if (right <= left || bottom <= top) return null
+        return Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
     }
 }

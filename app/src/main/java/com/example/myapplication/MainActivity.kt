@@ -235,10 +235,10 @@ class MainActivity : ComponentActivity() {
                                                 touchAdminSession()
                                                 scope.launch {
                                                     peopleRepo.approvePendingWithEmbeddings(
-                                                        applicationContext,
-                                                        id,
-                                                        name,
-                                                        relation
+                                                        appContext = this@MainActivity.applicationContext,
+                                                        personId = id,
+                                                        name = name,
+                                                        relation = relation
                                                     )
                                                 }
                                             },
