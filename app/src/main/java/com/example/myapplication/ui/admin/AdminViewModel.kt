@@ -15,15 +15,15 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
     val people = repo.allPeople().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun addPending(name: String, relation: String) = viewModelScope.launch {
-        repo.addPending(name, relation)
+        repo.addPending(name.trim(), relation.trim())
     }
 
-    fun addActive(name: String, relation: String) = viewModelScope.launch {
-        repo.addActive(name, relation)
-    }
-
-    fun approveFirstPending() = viewModelScope.launch {
-        val firstPending = people.value.firstOrNull { it.status.name == "PENDING" } ?: return@launch
-        repo.approve(firstPending.personId)
+    fun approvePending(personId: String, name: String, relation: String) = viewModelScope.launch {
+        repo.approvePendingWithEmbeddings(
+            appContext = getApplication(),
+            personId = personId,
+            name = name,
+            relation = relation
+        )
     }
 }
