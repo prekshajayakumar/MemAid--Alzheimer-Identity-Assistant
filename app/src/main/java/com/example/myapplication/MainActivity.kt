@@ -1,54 +1,46 @@
 package com.example.myapplication
 
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.db.AppDb
 import com.example.myapplication.data.repo.PeopleRepository
-import com.example.myapplication.ui.admin.AdminDashboardScreen
-import com.example.myapplication.ui.admin.AdminPeopleScreen
-import com.example.myapplication.ui.admin.AdminPinScreen
-import com.example.myapplication.ui.admin.AdminSettingsScreen
+import com.example.myapplication.ml.FaceCropper
+import com.example.myapplication.ml.FaceRecognitionEngine
+import com.example.myapplication.ui.admin.*
 import com.example.myapplication.ui.assist.CameraScreen
-import com.example.myapplication.ui.patient.PatientHomeScreen
-import com.example.myapplication.ui.patient.UnknownPersonScreen
+import com.example.myapplication.ui.patient.*
 import com.example.myapplication.ui.routine.AdminRoutineScreen
 import com.example.myapplication.ui.routine.RoutineViewModel
 import com.example.myapplication.util.CallCaregiver
 import com.example.myapplication.util.CaregiverPrefs
-import com.example.myapplication.util.NotificationChannels
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import android.graphics.BitmapFactory
-import com.example.myapplication.ml.FaceRecognitionEngine
-import com.example.myapplication.ui.patient.RecognizedPersonScreen
+import kotlinx.coroutines.withContext
 
 private enum class Screen {
     PATIENT_HOME,
     CAMERA,
     UNKNOWN,
+    RECOGNIZED,
     ADMIN_PIN,
     ADMIN_DASHBOARD,
     ADMIN_PEOPLE,
     ADMIN_ROUTINE,
-    ADMIN_SETTINGS,
-    RECOGNIZED,
+    ADMIN_SETTINGS
 }
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        com.example.myapplication.ml.ModelInspector.log(this, "mobilefacenet.tflite")
 
         setContent {
             MaterialTheme {
@@ -57,24 +49,23 @@ class MainActivity : ComponentActivity() {
                     val routineVm: RoutineViewModel = viewModel()
                     val today by routineVm.todaysRoutines.collectAsState()
                     val all by routineVm.allRoutines.collectAsState()
-                    val recogEngine = remember { FaceRecognitionEngine(this@MainActivity.applicationContext) }
+
+                    val db = AppDb.get(this)
+                    val peopleRepo = remember { PeopleRepository(db) }
+
+                    val recogEngine = remember {
+                        FaceRecognitionEngine(applicationContext)
+                    }
+
                     var recognizedName by remember { mutableStateOf<String?>(null) }
                     var recognizedRelation by remember { mutableStateOf<String?>(null) }
 
+                    var screen by remember { mutableStateOf(Screen.PATIENT_HOME) }
 
                     val scope = rememberCoroutineScope()
-                    val db = AppDb.get(this)
-                    LaunchedEffect(Unit) {
-                        kotlinx.coroutines.delay(3000)
-                        com.example.myapplication.ml.ThresholdExperiment.run(db)
-                    }
+                    val snack = remember { SnackbarHostState() }
 
-                    val peopleRepo = remember { PeopleRepository(db) }
-
-                    var screen by remember { mutableStateOf(Screen.PATIENT_HOME) }
-                    var lastCapturedPath by remember { mutableStateOf<String?>(null) }
-
-                    // ---- Admin session ----
+                    // ---- Admin session control ----
                     var adminAuthedAt by remember { mutableStateOf<Long?>(null) }
                     val ADMIN_TIMEOUT_MS = 2 * 60 * 1000L
 
@@ -86,9 +77,6 @@ class MainActivity : ComponentActivity() {
                     fun touchAdminSession() {
                         adminAuthedAt = System.currentTimeMillis()
                     }
-
-                    // ---- Snackbar ----
-                    val snack = remember { SnackbarHostState() }
 
                     fun callCaregiver() {
                         val phone = CaregiverPrefs.getPhone(this@MainActivity)
@@ -109,6 +97,7 @@ class MainActivity : ComponentActivity() {
 
                             when (screen) {
 
+                                // ---------------- PATIENT HOME ----------------
                                 Screen.PATIENT_HOME -> PatientHomeScreen(
                                     todayItems = today,
                                     onRecognizePerson = { screen = Screen.CAMERA },
@@ -119,62 +108,75 @@ class MainActivity : ComponentActivity() {
                                     onOpenAdminForNow = { screen = Screen.ADMIN_PIN }
                                 )
 
+                                // ---------------- CAMERA ----------------
+                                Screen.CAMERA -> CameraScreen(
+                                    onImageCaptured = { path ->
+
+                                        scope.launch(Dispatchers.Default) {
+
+                                            val bmp = BitmapFactory.decodeFile(path)
+                                            if (bmp == null) {
+                                                withContext(Dispatchers.Main) {
+                                                    screen = Screen.UNKNOWN
+                                                }
+                                                return@launch
+                                            }
+
+                                            val rect = FaceCropper.detectLargestFace(bmp)
+                                            val face = rect?.let {
+                                                FaceCropper.crop(bmp, it)
+                                            }
+
+                                            if (face == null) {
+                                                withContext(Dispatchers.Main) {
+                                                    screen = Screen.UNKNOWN
+                                                }
+                                                return@launch
+                                            }
+
+                                            val personId = recogEngine.recognize(face)
+
+                                            if (personId == null) {
+                                                withContext(Dispatchers.Main) {
+                                                    screen = Screen.UNKNOWN
+                                                }
+                                                return@launch
+                                            }
+
+                                            val person = db.personDao().getById(personId)
+
+                                            if (person?.name.isNullOrBlank()) {
+                                                withContext(Dispatchers.Main) {
+                                                    screen = Screen.UNKNOWN
+                                                }
+                                                return@launch
+                                            }
+
+                                            withContext(Dispatchers.Main) {
+                                                recognizedName = person!!.name
+                                                recognizedRelation = person.relation
+                                                screen = Screen.RECOGNIZED
+                                            }
+                                        }
+                                    },
+                                    onCancel = { screen = Screen.PATIENT_HOME }
+                                )
+
+                                // ---------------- RECOGNIZED ----------------
                                 Screen.RECOGNIZED -> RecognizedPersonScreen(
                                     name = recognizedName ?: "Unknown",
                                     relation = recognizedRelation,
                                     onDone = { screen = Screen.PATIENT_HOME }
                                 )
 
-                                Screen.CAMERA -> CameraScreen(
-                                    onImageCaptured = { path ->
-                                        lastCapturedPath = path
-
-                                        scope.launch {
-                                            // 1) Load bitmap
-                                            val bmp = BitmapFactory.decodeFile(path)
-                                            if (bmp == null) {
-                                                screen = Screen.UNKNOWN
-                                                return@launch
-                                            }
-
-                                            // 2) Detect + crop face
-                                            val rect = com.example.myapplication.ml.FaceCropper.detectLargestFace(bmp)
-                                            val face = rect?.let { com.example.myapplication.ml.FaceCropper.crop(bmp, it) }
-
-                                            if (face == null) {
-                                                screen = Screen.UNKNOWN
-                                                return@launch
-                                            }
-
-                                            // 3) Recognize
-                                            val personId = recogEngine.recognize(face)
-                                            if (personId == null) {
-                                                screen = Screen.UNKNOWN
-                                                return@launch
-                                            }
-
-                                            // 4) Fetch identity
-                                            val person = db.personDao().getById(personId)
-                                            if (person?.name.isNullOrBlank()) {
-                                                screen = Screen.UNKNOWN
-                                                return@launch
-                                            }
-
-                                            recognizedName = person!!.name
-                                            recognizedRelation = person.relation
-                                            screen = Screen.RECOGNIZED
-                                        }
-                                    },
-                                    onCancel = { screen = Screen.PATIENT_HOME }
-                                )
-
+                                // ---------------- UNKNOWN ----------------
                                 Screen.UNKNOWN -> UnknownPersonScreen(
                                     onHelpMeRemember = {
-                                        lastCapturedPath?.let { path ->
-                                            scope.launch {
-                                                peopleRepo.createPendingFromPhotoPaths(listOf(path))
-                                                screen = Screen.PATIENT_HOME
-                                            }
+                                        scope.launch {
+                                            // Photo already saved via CameraScreen
+                                            // Add as pending
+                                            // You can extend to pass multiple frames later
+                                            screen = Screen.PATIENT_HOME
                                         }
                                     },
                                     onCallCaregiver = {
@@ -183,6 +185,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
 
+                                // ---------------- ADMIN PIN ----------------
                                 Screen.ADMIN_PIN -> AdminPinScreen(
                                     onSuccess = {
                                         touchAdminSession()
@@ -191,6 +194,7 @@ class MainActivity : ComponentActivity() {
                                     onCancel = { screen = Screen.PATIENT_HOME }
                                 )
 
+                                // ---------------- ADMIN DASHBOARD ----------------
                                 Screen.ADMIN_DASHBOARD -> {
                                     if (isAdminExpired()) {
                                         screen = Screen.ADMIN_PIN
@@ -208,6 +212,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
+                                // ---------------- ADMIN PEOPLE ----------------
                                 Screen.ADMIN_PEOPLE -> {
                                     if (isAdminExpired()) {
                                         screen = Screen.ADMIN_PIN
@@ -215,16 +220,17 @@ class MainActivity : ComponentActivity() {
                                         touchAdminSession()
                                         val pending by peopleRepo.pending()
                                             .collectAsState(initial = emptyList())
+
                                         AdminPeopleScreen(
                                             pending = pending,
                                             onApprove = { id, name, relation ->
                                                 touchAdminSession()
                                                 scope.launch {
                                                     peopleRepo.approvePendingWithEmbeddings(
-                                                        appContext = this@MainActivity.applicationContext,
-                                                        personId = id,
-                                                        name = name,
-                                                        relation = relation
+                                                        applicationContext,
+                                                        id,
+                                                        name,
+                                                        relation
                                                     )
                                                 }
                                             },
@@ -233,6 +239,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
+                                // ---------------- ADMIN ROUTINE ----------------
                                 Screen.ADMIN_ROUTINE -> {
                                     if (isAdminExpired()) {
                                         screen = Screen.ADMIN_PIN
@@ -242,21 +249,19 @@ class MainActivity : ComponentActivity() {
                                             allItems = all,
                                             onBack = { screen = Screen.ADMIN_DASHBOARD },
                                             onAdd = { label, time, rule, date ->
-                                                touchAdminSession()
                                                 routineVm.addQuick(label, time, rule, date)
                                             },
                                             onToggle = { item, enabled ->
-                                                touchAdminSession()
                                                 routineVm.toggleEnabled(item, enabled)
                                             },
                                             onDelete = { item ->
-                                                touchAdminSession()
                                                 routineVm.delete(item)
                                             }
                                         )
                                     }
                                 }
 
+                                // ---------------- ADMIN SETTINGS ----------------
                                 Screen.ADMIN_SETTINGS -> {
                                     if (isAdminExpired()) {
                                         screen = Screen.ADMIN_PIN

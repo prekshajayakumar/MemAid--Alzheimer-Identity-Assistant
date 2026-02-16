@@ -9,6 +9,8 @@ import com.example.myapplication.data.entities.PersonStatus
 import com.example.myapplication.ml.EmbeddingCodec
 import com.example.myapplication.ml.FaceCropper
 import com.example.myapplication.ml.FaceEmbedder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import java.io.File
 
@@ -113,15 +115,54 @@ class PeopleRepository(
         }
     }
 
-    // keep old approvePending if you want, but use approvePendingWithEmbeddings going forward
-    suspend fun approvePending(personId: String, name: String, relation: String) {
-        val current = personDao.getById(personId) ?: return
-        personDao.upsert(
+    suspend fun approvePending(
+        context: Context,
+        personId: String,
+        name: String,
+        relation: String
+    ) {
+        val current = db.personDao().getById(personId) ?: return
+
+        db.personDao().upsert(
             current.copy(
                 name = name,
                 relation = relation,
                 status = PersonStatus.ACTIVE
             )
         )
+
+        generateAndStoreEmbeddings(context, personId)
     }
+
+    suspend fun generateAndStoreEmbeddings(context: Context, personId: String) =
+        withContext(Dispatchers.Default) {
+
+            val gallery = db.galleryDao().listForPerson(personId)
+            if (gallery.isEmpty()) return@withContext
+
+            val embedder = FaceEmbedder(context)
+
+            val vectors = mutableListOf<FaceVectorEntity>()
+
+            for (g in gallery) {
+                val bmp = BitmapFactory.decodeFile(g.imagePath) ?: continue
+
+                val rect = FaceCropper.detectLargestFace(bmp) ?: continue
+                val face = FaceCropper.crop(bmp, rect)
+
+                val embedding = embedder.embed(face)
+
+                vectors.add(
+                    FaceVectorEntity(
+                        personId = personId,
+                        embedding = EmbeddingCodec.toByteArray(embedding),
+                        quality = 1f
+                    )
+                )
+            }
+
+            if (vectors.isNotEmpty()) {
+                db.vectorDao().insertAll(vectors)
+            }
+        }
 }
