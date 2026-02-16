@@ -49,8 +49,7 @@ class MainActivity : ComponentActivity() {
                     val routineVm: RoutineViewModel = viewModel()
                     val today by routineVm.todaysRoutines.collectAsState()
                     val all by routineVm.allRoutines.collectAsState()
-
-                    val db = AppDb.get(this)
+                    val db = remember { AppDb.get(applicationContext) }
                     val peopleRepo = remember { PeopleRepository(db) }
 
                     val recogEngine = remember {
@@ -125,9 +124,7 @@ class MainActivity : ComponentActivity() {
                                             }
 
                                             val rect = FaceCropper.detectLargestFace(bmp)
-                                            val face = rect?.let {
-                                                FaceCropper.crop(bmp, it)
-                                            }
+                                            val face = rect?.let { FaceCropper.crop(bmp, it) }
 
                                             if (face == null) {
                                                 withContext(Dispatchers.Main) {
@@ -168,7 +165,12 @@ class MainActivity : ComponentActivity() {
                                 Screen.RECOGNIZED -> RecognizedPersonScreen(
                                     name = recognizedName ?: "Unknown",
                                     relation = recognizedRelation,
-                                    onDone = { screen = Screen.PATIENT_HOME }
+                                    onDone = {
+                                        // optional: clear cached identity
+                                        recognizedName = null
+                                        recognizedRelation = null
+                                        screen = Screen.PATIENT_HOME
+                                    }
                                 )
 
                                 // ---------------- UNKNOWN ----------------
@@ -234,12 +236,15 @@ class MainActivity : ComponentActivity() {
                                             onApprove = { id, name, relation ->
                                                 touchAdminSession()
                                                 scope.launch {
-                                                    peopleRepo.approvePendingWithEmbeddings(
+                                                    val approved = peopleRepo.approvePendingWithEmbeddings(
                                                         appContext = this@MainActivity.applicationContext,
                                                         personId = id,
                                                         name = name,
                                                         relation = relation
                                                     )
+                                                    if (!approved) {
+                                                        snack.showSnackbar("Couldn’t create face vectors. Try clearer photo.")
+                                                    }
                                                 }
                                             },
                                             onBack = { screen = Screen.ADMIN_DASHBOARD }

@@ -2,9 +2,9 @@ package com.example.myapplication.ml
 
 import android.util.Log
 import com.example.myapplication.data.db.AppDb
-import com.example.myapplication.data.entities.FaceVectorEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.sqrt
 
 object ThresholdExperiment {
 
@@ -27,6 +27,9 @@ object ThresholdExperiment {
                 val v1 = EmbeddingCodec.fromByteArray(vectors[i].embedding)
                 val v2 = EmbeddingCodec.fromByteArray(vectors[j].embedding)
 
+                l2NormalizeInPlace(v1)
+                l2NormalizeInPlace(v2)
+
                 val sim = FaceMatcher.cosineSimilarity(v1, v2)
 
                 if (vectors[i].personId == vectors[j].personId) {
@@ -39,6 +42,15 @@ object ThresholdExperiment {
 
         logStats("SAME_PERSON", samePersonScores)
         logStats("DIFFERENT_PERSON", differentPersonScores)
+    }
+
+    private fun l2NormalizeInPlace(v: FloatArray) {
+        var sum = 0f
+        for (x in v) sum += x * x
+        val norm = sqrt(sum)
+        if (norm <= 1e-12f) return
+        val inv = 1f / norm
+        for (i in v.indices) v[i] *= inv
     }
 
     private fun logStats(label: String, values: List<Float>) {

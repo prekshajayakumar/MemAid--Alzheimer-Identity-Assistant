@@ -10,9 +10,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class AdminViewModel(app: Application) : AndroidViewModel(app) {
-    private val repo = PeopleRepository(AppDb.get(app))
 
-    val people = repo.allPeople().stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    private val repo = PeopleRepository(AppDb.get(app.applicationContext))
+
+    val people = repo.allPeople()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun addPending(name: String, relation: String) = viewModelScope.launch {
         repo.addPending(name.trim(), relation.trim())
@@ -20,7 +22,7 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
 
     fun approvePending(personId: String, name: String, relation: String) = viewModelScope.launch {
         repo.approvePendingWithEmbeddings(
-            appContext = getApplication(),
+            appContext = getApplication<Application>().applicationContext,
             personId = personId,
             name = name,
             relation = relation
