@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
                     var recognizedRelation by remember { mutableStateOf<String?>(null) }
 
                     var screen by remember { mutableStateOf(Screen.PATIENT_HOME) }
+                    var lastCapturedPath by remember { mutableStateOf<String?>(null) }
 
                     val scope = rememberCoroutineScope()
                     val snack = remember { SnackbarHostState() }
@@ -111,6 +112,7 @@ class MainActivity : ComponentActivity() {
                                 // ---------------- CAMERA ----------------
                                 Screen.CAMERA -> CameraScreen(
                                     onImageCaptured = { path ->
+                                        lastCapturedPath = path
 
                                         scope.launch(Dispatchers.Default) {
 
@@ -172,10 +174,16 @@ class MainActivity : ComponentActivity() {
                                 // ---------------- UNKNOWN ----------------
                                 Screen.UNKNOWN -> UnknownPersonScreen(
                                     onHelpMeRemember = {
+                                        val path = lastCapturedPath
+                                        if (path == null) {
+                                            scope.launch { snack.showSnackbar("No photo captured.") }
+                                            screen = Screen.PATIENT_HOME
+                                            return@UnknownPersonScreen
+                                        }
+
                                         scope.launch {
-                                            // Photo already saved via CameraScreen
-                                            // Add as pending
-                                            // You can extend to pass multiple frames later
+                                            peopleRepo.createPendingFromPhotoPaths(listOf(path))
+                                            lastCapturedPath = null
                                             screen = Screen.PATIENT_HOME
                                         }
                                     },

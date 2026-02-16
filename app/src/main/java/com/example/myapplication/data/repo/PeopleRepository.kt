@@ -147,10 +147,10 @@ class PeopleRepository(
             for (g in gallery) {
                 val bmp = BitmapFactory.decodeFile(g.imagePath) ?: continue
 
-                val rect = FaceCropper.detectLargestFace(bmp) ?: continue
-                val face = FaceCropper.crop(bmp, rect)
+                val rect = FaceCropper.detectLargestFace(bitmap = bmp) ?: continue
+                val face = FaceCropper.crop(bitmap = bmp, rect = rect) ?: continue
 
-                val embedding = embedder.embed(face)
+                val embedding = embedder.embed(faceBitmap = face)
 
                 vectors.add(
                     FaceVectorEntity(
