@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.myapplication.ml.ModelInspector.log(this, "mobilefacenet.tflite")
 
         setContent {
             MaterialTheme {
