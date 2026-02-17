@@ -15,9 +15,8 @@ fun RecognizedPersonScreen(
     relation: String?,
     onDone: () -> Unit
 ) {
-    // Auto-return after brief display (no choices, per spec)
     LaunchedEffect(Unit) {
-        delay(1500)
+        delay(3000)
         onDone()
     }
 

@@ -53,7 +53,6 @@ class PeopleRepository(
         return person.personId
     }
 
-
     suspend fun approvePendingWithEmbeddings(
         appContext: Context,
         personId: String,
@@ -84,29 +83,32 @@ class PeopleRepository(
         if (gallery.isEmpty()) return@withContext 0
 
         val embedder = FaceEmbedder(context.applicationContext)
-        val vectors = mutableListOf<FaceVectorEntity>()
+        try {
+            val vectors = mutableListOf<FaceVectorEntity>()
 
-        for (g in gallery) {
-            val bmp = BitmapFactory.decodeFile(g.imagePath) ?: continue
-            val rect = FaceCropper.detectLargestFace(bmp) ?: continue
-            val face = FaceCropper.crop(bmp, rect) ?: continue
+            for (g in gallery) {
+                val bmp = BitmapFactory.decodeFile(g.imagePath) ?: continue
+                val rect = FaceCropper.detectLargestFace(bmp) ?: continue
+                val face = FaceCropper.crop(bmp, rect) ?: continue
+                val embedding = embedder.embed(face)
 
-            val embedding = embedder.embed(face)
-
-            vectors.add(
-                FaceVectorEntity(
-                    personId = personId,
-                    embedding = EmbeddingCodec.toByteArray(embedding),
-                    quality = 1f
+                vectors.add(
+                    FaceVectorEntity(
+                        personId = personId,
+                        embedding = EmbeddingCodec.toByteArray(embedding),
+                        quality = 1f
+                    )
                 )
-            )
+            }
+
+            if (vectors.isEmpty()) return@withContext 0
+
+            vectorDao.deleteForPerson(personId)
+            vectorDao.insertAll(vectors)
+
+            return@withContext vectors.size
+        } finally {
+            embedder.close()
         }
-
-        if (vectors.isEmpty()) return@withContext 0
-
-        vectorDao.deleteForPerson(personId)
-        vectorDao.insertAll(vectors)
-
-        return@withContext vectors.size
     }
 }

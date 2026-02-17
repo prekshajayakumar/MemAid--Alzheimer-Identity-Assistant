@@ -2,17 +2,26 @@ package com.example.myapplication.ui.patient
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnknownPersonScreen(
     onHelpMeRemember: () -> Unit,
-    onCallCaregiver: () -> Unit
+    onCallCaregiver: () -> Unit,
+    onTimeoutReturnHome: () -> Unit
 ) {
+    var interacted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        delay(5000)
+        if (!interacted) onTimeoutReturnHome()
+    }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text("MemAid") }) }
     ) { padding ->
@@ -31,16 +40,20 @@ fun UnknownPersonScreen(
             Spacer(Modifier.height(24.dp))
 
             Button(
-                onClick = onHelpMeRemember,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
+                onClick = {
+                    interacted = true
+                    onHelpMeRemember()
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp)
             ) { Text("Help me remember") }
 
             Spacer(Modifier.height(12.dp))
 
             OutlinedButton(
-                onClick = onCallCaregiver,
+                onClick = {
+                    interacted = true
+                    onCallCaregiver()
+                },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Call caregiver") }
         }

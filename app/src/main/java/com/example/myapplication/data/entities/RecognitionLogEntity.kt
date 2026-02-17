@@ -14,6 +14,7 @@ data class RecognitionLogEntity(
     val ts: Long = System.currentTimeMillis(),
     val outcome: RecognitionOutcome,
     val bestScore: Float? = null,
+    val threshold: Float? = null,
     val personId: String? = null,
     val imagePath: String? = null
 )
@@ -22,5 +23,6 @@ enum class RecognitionOutcome {
     RECOGNIZED,
     UNKNOWN,
     NO_FACE,
-    IMAGE_DECODE_FAIL
+    IMAGE_DECODE_FAIL,
+    ERROR
 }

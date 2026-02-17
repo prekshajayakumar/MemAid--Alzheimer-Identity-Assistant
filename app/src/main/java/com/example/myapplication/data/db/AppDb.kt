@@ -30,7 +30,7 @@ import net.sqlcipher.database.SupportFactory
         RoutineItemEntity::class,
         RecognitionLogEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

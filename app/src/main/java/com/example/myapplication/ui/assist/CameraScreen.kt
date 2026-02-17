@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -33,21 +34,28 @@ fun CameraScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    val scope = rememberCoroutineScope()
+    val snack = remember { SnackbarHostState() }
+
     val camPermission = rememberPermissionState(android.Manifest.permission.CAMERA)
     LaunchedEffect(Unit) {
         if (!camPermission.status.isGranted) camPermission.launchPermissionRequest()
     }
 
     if (!camPermission.status.isGranted) {
-        Column(
-            Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("Camera permission needed.")
-            Spacer(Modifier.height(8.dp))
-            Button(onClick = { camPermission.launchPermissionRequest() }) {
-                Text("Grant permission")
+        Scaffold(
+            snackbarHost = { SnackbarHost(snack) }
+        ) { padding ->
+            Column(
+                Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Camera permission needed.")
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = { camPermission.launchPermissionRequest() }) {
+                    Text("Grant permission")
+                }
             }
         }
         return
@@ -67,20 +75,17 @@ fun CameraScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Recognize Person") },
-                navigationIcon = {
-                    TextButton(onClick = onCancel) { Text("Back") }
-                }
+                navigationIcon = { TextButton(onClick = onCancel) { Text("Back") } }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snack) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
 
             AndroidView(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 factory = { ctx ->
-                    PreviewView(ctx).apply {
-                        this.controller = controller
-                    }
+                    PreviewView(ctx).apply { this.controller = controller }
                 }
             )
 
@@ -90,14 +95,19 @@ fun CameraScreen(
                         context = context,
                         controller = controller,
                         onSaved = { uri ->
-                            uri?.path?.let { onImageCaptured(it) }
+                            val path = uri?.path
+                            if (path.isNullOrBlank()) {
+                                scope.launch { snack.showSnackbar("Couldn’t read saved photo path.") }
+                            } else {
+                                onImageCaptured(path)
+                            }
                         },
-                        onError = {}
+                        onError = { e ->
+                            scope.launch { snack.showSnackbar("Capture failed: ${e.message ?: "unknown"}") }
+                        }
                     )
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
             ) {
                 Text("Capture")
             }
@@ -116,8 +126,7 @@ private fun captureToAppPictures(
         return
     }
 
-    val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
-        .format(System.currentTimeMillis())
+    val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
     val file = File(picturesDir, "memaid_$name.jpg")
 
     val output = ImageCapture.OutputFileOptions.Builder(file).build()

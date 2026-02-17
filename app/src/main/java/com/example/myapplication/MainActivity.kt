@@ -53,13 +53,12 @@ class MainActivity : ComponentActivity() {
                     val routineVm: RoutineViewModel = viewModel()
                     val today by routineVm.todaysRoutines.collectAsState()
                     val all by routineVm.allRoutines.collectAsState()
+
                     val db = remember { AppDb.get(applicationContext) }
                     val peopleRepo = remember { PeopleRepository(db) }
                     val logsRepo = remember { LogsRepository(db.recognitionLogDao()) }
 
-                    val recogEngine = remember {
-                        FaceRecognitionEngine(applicationContext)
-                    }
+                    val recogEngine = remember { FaceRecognitionEngine(applicationContext) }
 
                     var recognizedName by remember { mutableStateOf<String?>(null) }
                     var recognizedRelation by remember { mutableStateOf<String?>(null) }
@@ -94,6 +93,25 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    fun logRecognition(
+                        outcome: RecognitionOutcome,
+                        imagePath: String?,
+                        bestScore: Float?,
+                        personId: String?
+                    ) {
+                        scope.launch {
+                            logsRepo.insert(
+                                RecognitionLogEntity(
+                                    outcome = outcome,
+                                    bestScore = bestScore,
+                                    threshold = 0.80f,
+                                    personId = personId,
+                                    imagePath = imagePath
+                                )
+                            )
+                        }
+                    }
+
                     Scaffold(
                         snackbarHost = { SnackbarHost(hostState = snack) }
                     ) { padding ->
@@ -102,7 +120,6 @@ class MainActivity : ComponentActivity() {
 
                             when (screen) {
 
-                                // ---------------- PATIENT HOME ----------------
                                 Screen.PATIENT_HOME -> PatientHomeScreen(
                                     todayItems = today,
                                     onRecognizePerson = { screen = Screen.CAMERA },
@@ -113,97 +130,100 @@ class MainActivity : ComponentActivity() {
                                     onOpenAdminForNow = { screen = Screen.ADMIN_PIN }
                                 )
 
-                                // ---------------- CAMERA ----------------
                                 Screen.CAMERA -> CameraScreen(
                                     onImageCaptured = { path ->
                                         lastCapturedPath = path
 
                                         scope.launch(Dispatchers.Default) {
-
-                                            val bmp = BitmapFactory.decodeFile(path)
-                                            if (bmp == null) {
-                                                logsRepo.insert(
-                                                    RecognitionLogEntity(
+                                            try {
+                                                val bmp = BitmapFactory.decodeFile(path)
+                                                if (bmp == null) {
+                                                    logRecognition(
                                                         outcome = RecognitionOutcome.IMAGE_DECODE_FAIL,
-                                                        imagePath = path
+                                                        imagePath = path,
+                                                        bestScore = null,
+                                                        personId = null
                                                     )
-                                                )
-                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                return@launch
-                                            }
+                                                    withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                                    return@launch
+                                                }
 
-                                            val rect = FaceCropper.detectLargestFace(bmp)
-                                            val face = rect?.let { FaceCropper.crop(bmp, it) }
+                                                val rect = FaceCropper.detectLargestFace(bmp)
+                                                val face = rect?.let { FaceCropper.crop(bmp, it) }
 
-                                            if (face == null) {
-                                                logsRepo.insert(
-                                                    RecognitionLogEntity(
+                                                if (face == null) {
+                                                    logRecognition(
                                                         outcome = RecognitionOutcome.NO_FACE,
-                                                        imagePath = path
+                                                        imagePath = path,
+                                                        bestScore = null,
+                                                        personId = null
                                                     )
-                                                )
-                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                return@launch
-                                            }
+                                                    withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                                    return@launch
+                                                }
 
-                                            val personId = recogEngine.recognize(face)
+                                                val result = recogEngine.recognize(face)
 
-                                            if (personId == null) {
-                                                logsRepo.insert(
-                                                    RecognitionLogEntity(
+                                                if (result.personId == null) {
+                                                    logRecognition(
                                                         outcome = RecognitionOutcome.UNKNOWN,
-                                                        imagePath = path
+                                                        imagePath = path,
+                                                        bestScore = result.bestScore,
+                                                        personId = null
                                                     )
-                                                )
-                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                return@launch
-                                            }
+                                                    withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                                    return@launch
+                                                }
 
-                                            val person = db.personDao().getById(personId)
+                                                val person = db.personDao().getById(result.personId)
 
-                                            if (person?.name.isNullOrBlank()) {
-                                                logsRepo.insert(
-                                                    RecognitionLogEntity(
+                                                if (person?.name.isNullOrBlank()) {
+                                                    logRecognition(
                                                         outcome = RecognitionOutcome.UNKNOWN,
-                                                        personId = personId,
-                                                        imagePath = path
+                                                        imagePath = path,
+                                                        bestScore = result.bestScore,
+                                                        personId = result.personId
                                                     )
-                                                )
-                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                return@launch
-                                            }
+                                                    withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                                    return@launch
+                                                }
 
-                                            logsRepo.insert(
-                                                RecognitionLogEntity(
+                                                logRecognition(
                                                     outcome = RecognitionOutcome.RECOGNIZED,
-                                                    personId = personId,
-                                                    imagePath = path
+                                                    imagePath = path,
+                                                    bestScore = result.bestScore,
+                                                    personId = result.personId
                                                 )
-                                            )
 
-                                            withContext(Dispatchers.Main) {
-                                                recognizedName = person!!.name
-                                                recognizedRelation = person.relation
-                                                screen = Screen.RECOGNIZED
+                                                withContext(Dispatchers.Main) {
+                                                    recognizedName = person!!.name
+                                                    recognizedRelation = person.relation
+                                                    screen = Screen.RECOGNIZED
+                                                }
+                                            } catch (e: Exception) {
+                                                logRecognition(
+                                                    outcome = RecognitionOutcome.ERROR,
+                                                    imagePath = path,
+                                                    bestScore = null,
+                                                    personId = null
+                                                )
+                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
                                             }
                                         }
                                     },
                                     onCancel = { screen = Screen.PATIENT_HOME }
                                 )
 
-                                // ---------------- RECOGNIZED ----------------
                                 Screen.RECOGNIZED -> RecognizedPersonScreen(
                                     name = recognizedName ?: "Unknown",
                                     relation = recognizedRelation,
                                     onDone = {
-                                        // optional: clear cached identity
                                         recognizedName = null
                                         recognizedRelation = null
                                         screen = Screen.PATIENT_HOME
                                     }
                                 )
 
-                                // ---------------- UNKNOWN ----------------
                                 Screen.UNKNOWN -> UnknownPersonScreen(
                                     onHelpMeRemember = {
                                         val path = lastCapturedPath
@@ -222,10 +242,13 @@ class MainActivity : ComponentActivity() {
                                     onCallCaregiver = {
                                         callCaregiver()
                                         screen = Screen.PATIENT_HOME
+                                    },
+                                    onTimeoutReturnHome = {
+                                        screen = Screen.PATIENT_HOME
                                     }
                                 )
 
-                                // ---------------- ADMIN PIN ----------------
+
                                 Screen.ADMIN_PIN -> AdminPinScreen(
                                     onSuccess = {
                                         touchAdminSession()
@@ -234,7 +257,6 @@ class MainActivity : ComponentActivity() {
                                     onCancel = { screen = Screen.PATIENT_HOME }
                                 )
 
-                                // ---------------- ADMIN DASHBOARD ----------------
                                 Screen.ADMIN_DASHBOARD -> {
                                     if (isAdminExpired()) {
                                         screen = Screen.ADMIN_PIN
@@ -253,7 +275,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
-                                // ---------------- ADMIN PEOPLE ----------------
                                 Screen.ADMIN_PEOPLE -> {
                                     if (isAdminExpired()) {
                                         screen = Screen.ADMIN_PIN
@@ -283,7 +304,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
-                                // ---------------- ADMIN ROUTINE ----------------
                                 Screen.ADMIN_ROUTINE -> {
                                     if (isAdminExpired()) {
                                         screen = Screen.ADMIN_PIN
@@ -305,7 +325,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
-                                // ---------------- ADMIN SETTINGS ----------------
                                 Screen.ADMIN_SETTINGS -> {
                                     if (isAdminExpired()) {
                                         screen = Screen.ADMIN_PIN

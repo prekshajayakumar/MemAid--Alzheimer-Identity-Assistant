@@ -44,9 +44,10 @@ fun AdminDashboardScreen(
             Text("Exit Admin")
         }
 
-        Button(onClick = onLogs, modifier = Modifier.fillMaxWidth()) {
-            Text("Logs")
-        }
         Spacer(Modifier.height(12.dp))
+
+        Button(onClick = onLogs, modifier = Modifier.fillMaxWidth()) {
+            Text("Recognition Logs")
+        }
     }
 }
