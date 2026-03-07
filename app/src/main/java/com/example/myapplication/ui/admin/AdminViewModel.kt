@@ -16,10 +16,6 @@ class AdminViewModel(app: Application) : AndroidViewModel(app) {
     val people = repo.allPeople()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun addPending(name: String, relation: String) = viewModelScope.launch {
-        repo.addPending(name.trim(), relation.trim())
-    }
-
     fun approvePending(personId: String, name: String, relation: String) = viewModelScope.launch {
         repo.approvePendingWithEmbeddings(
             appContext = getApplication<Application>().applicationContext,

@@ -1,5 +1,6 @@
 package com.example.myapplication
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -27,6 +28,8 @@ import com.example.myapplication.data.repo.LogsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 private enum class Screen {
     PATIENT_HOME,
@@ -64,12 +67,13 @@ class MainActivity : ComponentActivity() {
                     var recognizedRelation by remember { mutableStateOf<String?>(null) }
 
                     var screen by remember { mutableStateOf(Screen.PATIENT_HOME) }
+
                     var lastCapturedPath by remember { mutableStateOf<String?>(null) }
+                    var lastFaceCropPath by remember { mutableStateOf<String?>(null) }
 
                     val scope = rememberCoroutineScope()
                     val snack = remember { SnackbarHostState() }
 
-                    // ---- Admin session control ----
                     var adminAuthedAt by remember { mutableStateOf<Long?>(null) }
                     val ADMIN_TIMEOUT_MS = 2 * 60 * 1000L
 
@@ -90,6 +94,23 @@ class MainActivity : ComponentActivity() {
                             }
                         } else {
                             CallCaregiver.dial(this@MainActivity, phone)
+                        }
+                    }
+
+                    fun saveFaceCrop(bitmap: Bitmap): String? {
+                        return try {
+                            val dir = File(applicationContext.filesDir, "face_crops")
+                            if (!dir.exists()) dir.mkdirs()
+
+                            val file = File(dir, "face_${System.currentTimeMillis()}.jpg")
+
+                            FileOutputStream(file).use {
+                                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it)
+                            }
+
+                            file.absolutePath
+                        } catch (e: Exception) {
+                            null
                         }
                     }
 
@@ -132,82 +153,45 @@ class MainActivity : ComponentActivity() {
 
                                 Screen.CAMERA -> CameraScreen(
                                     onImageCaptured = { path ->
+
                                         lastCapturedPath = path
 
                                         scope.launch(Dispatchers.Default) {
-                                            try {
-                                                val bmp = BitmapFactory.decodeFile(path)
-                                                if (bmp == null) {
-                                                    logRecognition(
-                                                        outcome = RecognitionOutcome.IMAGE_DECODE_FAIL,
-                                                        imagePath = path,
-                                                        bestScore = null,
-                                                        personId = null
-                                                    )
-                                                    withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                    return@launch
-                                                }
 
-                                                val rect = FaceCropper.detectLargestFace(bmp)
-                                                val face = rect?.let { FaceCropper.crop(bmp, it) }
-
-                                                if (face == null) {
-                                                    logRecognition(
-                                                        outcome = RecognitionOutcome.NO_FACE,
-                                                        imagePath = path,
-                                                        bestScore = null,
-                                                        personId = null
-                                                    )
-                                                    withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                    return@launch
-                                                }
-
-                                                val result = recogEngine.recognize(face)
-
-                                                if (result.personId == null) {
-                                                    logRecognition(
-                                                        outcome = RecognitionOutcome.UNKNOWN,
-                                                        imagePath = path,
-                                                        bestScore = result.bestScore,
-                                                        personId = null
-                                                    )
-                                                    withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                    return@launch
-                                                }
-
-                                                val person = db.personDao().getById(result.personId)
-
-                                                if (person?.name.isNullOrBlank()) {
-                                                    logRecognition(
-                                                        outcome = RecognitionOutcome.UNKNOWN,
-                                                        imagePath = path,
-                                                        bestScore = result.bestScore,
-                                                        personId = result.personId
-                                                    )
-                                                    withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                    return@launch
-                                                }
-
-                                                logRecognition(
-                                                    outcome = RecognitionOutcome.RECOGNIZED,
-                                                    imagePath = path,
-                                                    bestScore = result.bestScore,
-                                                    personId = result.personId
-                                                )
-
-                                                withContext(Dispatchers.Main) {
-                                                    recognizedName = person!!.name
-                                                    recognizedRelation = person.relation
-                                                    screen = Screen.RECOGNIZED
-                                                }
-                                            } catch (e: Exception) {
-                                                logRecognition(
-                                                    outcome = RecognitionOutcome.ERROR,
-                                                    imagePath = path,
-                                                    bestScore = null,
-                                                    personId = null
-                                                )
+                                            val bmp = BitmapFactory.decodeFile(path)
+                                            if (bmp == null) {
                                                 withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                                return@launch
+                                            }
+
+                                            val rect = FaceCropper.detectLargestFace(bmp)
+                                            val face = rect?.let { FaceCropper.crop(bmp, it) }
+
+                                            lastFaceCropPath = face?.let { saveFaceCrop(it) }
+
+                                            if (face == null) {
+                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                                return@launch
+                                            }
+
+                                            val result = recogEngine.recognize(face)
+
+                                            if (result.personId == null) {
+                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                                return@launch
+                                            }
+
+                                            val person = db.personDao().getById(result.personId)
+
+                                            if (person?.name.isNullOrBlank()) {
+                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                                return@launch
+                                            }
+
+                                            withContext(Dispatchers.Main) {
+                                                recognizedName = person!!.name
+                                                recognizedRelation = person.relation
+                                                screen = Screen.RECOGNIZED
                                             }
                                         }
                                     },
@@ -226,9 +210,13 @@ class MainActivity : ComponentActivity() {
 
                                 Screen.UNKNOWN -> UnknownPersonScreen(
                                     onHelpMeRemember = {
-                                        val path = lastCapturedPath
+
+                                        val path = lastFaceCropPath ?: lastCapturedPath
+
                                         if (path == null) {
-                                            scope.launch { snack.showSnackbar("No photo captured.") }
+                                            scope.launch {
+                                                snack.showSnackbar("No photo captured.")
+                                            }
                                             screen = Screen.PATIENT_HOME
                                             return@UnknownPersonScreen
                                         }
@@ -236,6 +224,7 @@ class MainActivity : ComponentActivity() {
                                         scope.launch {
                                             peopleRepo.createPendingFromPhotoPaths(listOf(path))
                                             lastCapturedPath = null
+                                            lastFaceCropPath = null
                                             screen = Screen.PATIENT_HOME
                                         }
                                     },
@@ -247,7 +236,6 @@ class MainActivity : ComponentActivity() {
                                         screen = Screen.PATIENT_HOME
                                     }
                                 )
-
 
                                 Screen.ADMIN_PIN -> AdminPinScreen(
                                     onSuccess = {
@@ -276,80 +264,79 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 Screen.ADMIN_PEOPLE -> {
-                                    if (isAdminExpired()) {
-                                        screen = Screen.ADMIN_PIN
-                                    } else {
-                                        touchAdminSession()
-                                        val pending by peopleRepo.pending()
-                                            .collectAsState(initial = emptyList())
 
-                                        AdminPeopleScreen(
-                                            pending = pending,
-                                            onApprove = { id, name, relation ->
-                                                touchAdminSession()
-                                                scope.launch {
-                                                    val approved = peopleRepo.approvePendingWithEmbeddings(
-                                                        appContext = this@MainActivity.applicationContext,
-                                                        personId = id,
-                                                        name = name,
-                                                        relation = relation
-                                                    )
-                                                    if (!approved) {
-                                                        snack.showSnackbar("Couldn’t create face vectors. Try clearer photo.")
-                                                    }
-                                                }
-                                            },
-                                            onBack = { screen = Screen.ADMIN_DASHBOARD }
-                                        )
+                                    val pending by peopleRepo.pending()
+                                        .collectAsState(initial = emptyList())
+
+                                    val photoPathByPersonId by produceState<Map<String, String>>(
+                                        initialValue = emptyMap(),
+                                        key1 = pending
+                                    ) {
+                                        value = pending.associate { person ->
+                                            val path = db.galleryDao()
+                                                .listForPerson(person.personId)
+                                                .firstOrNull()
+                                                ?.imagePath
+                                                .orEmpty()
+
+                                            person.personId to path
+                                        }
                                     }
+
+                                    AdminPeopleScreen(
+                                        pending = pending,
+                                        photoPathByPersonId = photoPathByPersonId,
+                                        onApprove = { id, name, relation ->
+                                            scope.launch {
+
+                                                val approved = peopleRepo.approvePendingWithEmbeddings(
+                                                    appContext = applicationContext,
+                                                    personId = id,
+                                                    name = name,
+                                                    relation = relation
+                                                )
+
+                                                if (!approved) {
+                                                    snack.showSnackbar("Couldn’t create face vectors. Try clearer photo.")
+                                                }
+                                            }
+                                        },
+                                        onBack = { screen = Screen.ADMIN_DASHBOARD }
+                                    )
                                 }
 
                                 Screen.ADMIN_ROUTINE -> {
-                                    if (isAdminExpired()) {
-                                        screen = Screen.ADMIN_PIN
-                                    } else {
-                                        touchAdminSession()
-                                        AdminRoutineScreen(
-                                            allItems = all,
-                                            onBack = { screen = Screen.ADMIN_DASHBOARD },
-                                            onAdd = { label, time, rule, date ->
-                                                routineVm.addQuick(label, time, rule, date)
-                                            },
-                                            onToggle = { item, enabled ->
-                                                routineVm.toggleEnabled(item, enabled)
-                                            },
-                                            onDelete = { item ->
-                                                routineVm.delete(item)
-                                            }
-                                        )
-                                    }
+                                    AdminRoutineScreen(
+                                        allItems = all,
+                                        onBack = { screen = Screen.ADMIN_DASHBOARD },
+                                        onAdd = { label, time, rule, date ->
+                                            routineVm.addQuick(label, time, rule, date)
+                                        },
+                                        onToggle = { item, enabled ->
+                                            routineVm.toggleEnabled(item, enabled)
+                                        },
+                                        onDelete = { item ->
+                                            routineVm.delete(item)
+                                        }
+                                    )
                                 }
 
                                 Screen.ADMIN_SETTINGS -> {
-                                    if (isAdminExpired()) {
-                                        screen = Screen.ADMIN_PIN
-                                    } else {
-                                        touchAdminSession()
-                                        AdminSettingsScreen(
-                                            onBack = { screen = Screen.ADMIN_DASHBOARD }
-                                        )
-                                    }
+                                    AdminSettingsScreen(
+                                        onBack = { screen = Screen.ADMIN_DASHBOARD }
+                                    )
                                 }
 
                                 Screen.ADMIN_LOGS -> {
-                                    if (isAdminExpired()) {
-                                        screen = Screen.ADMIN_PIN
-                                    } else {
-                                        touchAdminSession()
-                                        val logsVm: LogsViewModel = viewModel()
-                                        val logs by logsVm.logs.collectAsState(initial = emptyList())
 
-                                        AdminLogsScreen(
-                                            logs = logs,
-                                            onClear = { logsVm.clearAll() },
-                                            onBack = { screen = Screen.ADMIN_DASHBOARD }
-                                        )
-                                    }
+                                    val logsVm: LogsViewModel = viewModel()
+                                    val logs by logsVm.logs.collectAsState(initial = emptyList())
+
+                                    AdminLogsScreen(
+                                        logs = logs,
+                                        onClear = { logsVm.clearAll() },
+                                        onBack = { screen = Screen.ADMIN_DASHBOARD }
+                                    )
                                 }
                             }
                         }

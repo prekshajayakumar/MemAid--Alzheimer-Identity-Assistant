@@ -15,27 +15,43 @@ fun UnknownPersonScreen(
     onCallCaregiver: () -> Unit,
     onTimeoutReturnHome: () -> Unit
 ) {
+
     var interacted by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(5000)
-        if (!interacted) onTimeoutReturnHome()
+
+        delay(10000)
+
+        if (!interacted) {
+            onTimeoutReturnHome()
+        }
     }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("MemAid") }) }
     ) { padding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp),
+
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("I don’t recognize this person.", style = MaterialTheme.typography.titleLarge)
+
+            Text(
+                "I don’t recognize this person.",
+                style = MaterialTheme.typography.titleLarge
+            )
+
             Spacer(Modifier.height(8.dp))
-            Text("That’s okay.", style = MaterialTheme.typography.bodyLarge)
+
+            Text(
+                "That’s okay.",
+                style = MaterialTheme.typography.bodyLarge
+            )
 
             Spacer(Modifier.height(24.dp))
 
@@ -44,8 +60,12 @@ fun UnknownPersonScreen(
                     interacted = true
                     onHelpMeRemember()
                 },
-                modifier = Modifier.fillMaxWidth().height(56.dp)
-            ) { Text("Help me remember") }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+            ) {
+                Text("Help me remember")
+            }
 
             Spacer(Modifier.height(12.dp))
 
@@ -55,7 +75,9 @@ fun UnknownPersonScreen(
                     onCallCaregiver()
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Call caregiver") }
+            ) {
+                Text("Call caregiver")
+            }
         }
     }
 }
