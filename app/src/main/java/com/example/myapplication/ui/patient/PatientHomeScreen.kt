@@ -1,23 +1,22 @@
 package com.example.myapplication.ui.patient
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.data.entities.RoutineItemEntity
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.ExperimentalFoundationApi
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PatientHomeScreen(
-    todayItems: List<RoutineItemEntity>,
+    currentRoutine: RoutineItemEntity?,
+    nextRoutine: RoutineItemEntity?,
     onRecognizePerson: () -> Unit,
     onCallCaregiver: () -> Unit,
-    onOpenAdminForNow: () -> Unit, // TEMP (we’ll hide/gate later)
+    onOpenAdminForNow: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -28,7 +27,7 @@ fun PatientHomeScreen(
                         modifier = Modifier
                             .padding(4.dp)
                             .combinedClickable(
-                                onClick = { /* do nothing */ },
+                                onClick = {},
                                 onLongClick = { onOpenAdminForNow() }
                             )
                     )
@@ -36,6 +35,7 @@ fun PatientHomeScreen(
             )
         }
     ) { padding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -46,24 +46,44 @@ fun PatientHomeScreen(
             Spacer(Modifier.height(8.dp))
 
             Card(modifier = Modifier.fillMaxWidth()) {
-                if (todayItems.isEmpty()) {
-                    Text(
-                        text = "No items for today.",
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 300.dp)
-                    ) {
-                        items(todayItems) { item ->
-                            ListItem(
-                                headlineContent = { Text(formatTime(item.timeMinutes)) },
-                                supportingContent = { Text(item.label) }
+                Column(modifier = Modifier.padding(16.dp)) {
+
+                    when {
+                        currentRoutine != null -> {
+                            Text("Now", style = MaterialTheme.typography.labelLarge)
+                            Spacer(Modifier.height(4.dp))
+                            Text(currentRoutine.label, style = MaterialTheme.typography.headlineSmall)
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "${formatTime(currentRoutine.timeMinutes)} - ${formatTime(currentRoutine.endTimeMinutes ?: (currentRoutine.timeMinutes + 60))}",
+                                style = MaterialTheme.typography.bodyLarge
                             )
-                            HorizontalDivider()
+                            currentRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
+                                Spacer(Modifier.height(6.dp))
+                                Text("Place: $it", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+
+                        nextRoutine != null -> {
+                            Text("Next", style = MaterialTheme.typography.labelLarge)
+                            Spacer(Modifier.height(4.dp))
+                            Text(nextRoutine.label, style = MaterialTheme.typography.headlineSmall)
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "${formatTime(nextRoutine.timeMinutes)} - ${formatTime(nextRoutine.endTimeMinutes ?: (nextRoutine.timeMinutes + 60))}",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            nextRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
+                                Spacer(Modifier.height(6.dp))
+                                Text("Place: $it", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+
+                        else -> {
+                            Text(
+                                "No more activities planned for now.",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
                         }
                     }
                 }

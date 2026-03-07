@@ -78,6 +78,9 @@ class MainActivity : ComponentActivity() {
                     var adminAuthedAt by remember { mutableStateOf<Long?>(null) }
                     val ADMIN_TIMEOUT_MS = 2 * 60 * 1000L
 
+                    val currentRoutine by routineVm.currentRoutine.collectAsState()
+                    val nextRoutine by routineVm.nextRoutine.collectAsState()
+
                     fun isAdminExpired(): Boolean {
                         val t = adminAuthedAt ?: return true
                         return (System.currentTimeMillis() - t) > ADMIN_TIMEOUT_MS
@@ -143,7 +146,8 @@ class MainActivity : ComponentActivity() {
                             when (screen) {
 
                                 Screen.PATIENT_HOME -> PatientHomeScreen(
-                                    todayItems = today,
+                                    currentRoutine = currentRoutine,
+                                    nextRoutine = nextRoutine,
                                     onRecognizePerson = { screen = Screen.CAMERA },
                                     onCallCaregiver = {
                                         callCaregiver()
@@ -317,8 +321,15 @@ class MainActivity : ComponentActivity() {
                                     AdminRoutineScreen(
                                         allItems = all,
                                         onBack = { screen = Screen.ADMIN_DASHBOARD },
-                                        onAdd = { label, time, rule, date ->
-                                            routineVm.addQuick(label, time, rule, date)
+                                        onAdd = { label, time, rule, date, endTimeMinutes, expectedLocationLabel ->
+                                            routineVm.addQuick(
+                                                label = label,
+                                                timeMinutes = time,
+                                                repeatRule = rule,
+                                                date = date,
+                                                endTimeMinutes = endTimeMinutes,
+                                                expectedLocationLabel = expectedLocationLabel
+                                            )
                                         },
                                         onToggle = { item, enabled ->
                                             routineVm.toggleEnabled(item, enabled)

@@ -16,13 +16,27 @@ import java.time.LocalDate
 fun AdminRoutineScreen(
     allItems: List<RoutineItemEntity>,
     onBack: () -> Unit,
-    onAdd: (label: String, timeMinutes: Int, rule: RepeatRule, date: String?) -> Unit,
+    onAdd: (
+        label: String,
+        timeMinutes: Int,
+        repeatRule: RepeatRule,
+        date: String?,
+        endTimeMinutes: Int?,
+        expectedLocationLabel: String?
+    ) -> Unit,
     onToggle: (RoutineItemEntity, Boolean) -> Unit,
     onDelete: (RoutineItemEntity) -> Unit,
 ) {
     var label by remember { mutableStateOf("") }
-    var hour by remember { mutableStateOf("9") }
-    var minute by remember { mutableStateOf("00") }
+
+    var startHour by remember { mutableStateOf("9") }
+    var startMinute by remember { mutableStateOf("00") }
+
+    var endHour by remember { mutableStateOf("10") }
+    var endMinute by remember { mutableStateOf("00") }
+
+    var expectedLocation by remember { mutableStateOf("") }
+
     var rule by remember { mutableStateOf(RepeatRule.DAILY) }
     var date by remember { mutableStateOf(LocalDate.now().toString()) }
 
@@ -48,32 +62,68 @@ fun AdminRoutineScreen(
             OutlinedTextField(
                 value = label,
                 onValueChange = { label = it },
-                label = { Text("Label (e.g., Take medicine)") },
+                label = { Text("Activity label") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
+
+            Text("Start time", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(6.dp))
 
             Row(Modifier.fillMaxWidth()) {
                 OutlinedTextField(
-                    value = hour,
-                    onValueChange = { hour = it.filter(Char::isDigit).take(2) },
-                    label = { Text("Hour (0-23)") },
+                    value = startHour,
+                    onValueChange = { startHour = it.filter(Char::isDigit).take(2) },
+                    label = { Text("Hour") },
                     modifier = Modifier.weight(1f),
                     singleLine = true
                 )
                 Spacer(Modifier.width(8.dp))
                 OutlinedTextField(
-                    value = minute,
-                    onValueChange = { minute = it.filter(Char::isDigit).take(2) },
-                    label = { Text("Min (0-59)") },
+                    value = startMinute,
+                    onValueChange = { startMinute = it.filter(Char::isDigit).take(2) },
+                    label = { Text("Min") },
                     modifier = Modifier.weight(1f),
                     singleLine = true
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
+
+            Text("End time", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(6.dp))
+
+            Row(Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = endHour,
+                    onValueChange = { endHour = it.filter(Char::isDigit).take(2) },
+                    label = { Text("Hour") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+                Spacer(Modifier.width(8.dp))
+                OutlinedTextField(
+                    value = endMinute,
+                    onValueChange = { endMinute = it.filter(Char::isDigit).take(2) },
+                    label = { Text("Min") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = expectedLocation,
+                onValueChange = { expectedLocation = it },
+                label = { Text("Expected place (optional)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            Spacer(Modifier.height(12.dp))
 
             RepeatRuleDropdown(
                 selected = rule,
@@ -91,23 +141,39 @@ fun AdminRoutineScreen(
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
 
             Button(
                 onClick = {
-                    val h = (hour.toIntOrNull() ?: 9).coerceIn(0, 23)
-                    val m = (minute.toIntOrNull() ?: 0).coerceIn(0, 59)
-                    val timeMinutes = h * 60 + m
+                    val sh = (startHour.toIntOrNull() ?: 9).coerceIn(0, 23)
+                    val sm = (startMinute.toIntOrNull() ?: 0).coerceIn(0, 59)
+                    val eh = (endHour.toIntOrNull() ?: sh).coerceIn(0, 23)
+                    val em = (endMinute.toIntOrNull() ?: sm).coerceIn(0, 59)
+
+                    val startTimeMinutes = sh * 60 + sm
+                    val endTime = eh * 60 + em
+                    val endTimeMinutes = if (endTime > startTimeMinutes) endTime else null
 
                     val d = if (rule == RepeatRule.NONE) date else null
+                    val expectedPlace = expectedLocation.trim().ifBlank { null }
 
                     if (label.isNotBlank()) {
-                        onAdd(label.trim(), timeMinutes, rule, d)
+                        onAdd(
+                            label.trim(),
+                            startTimeMinutes,
+                            rule,
+                            d,
+                            endTimeMinutes,
+                            expectedPlace
+                        )
                         label = ""
+                        expectedLocation = ""
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Add") }
+            ) {
+                Text("Add")
+            }
 
             Spacer(Modifier.height(16.dp))
             Text("All items", style = MaterialTheme.typography.titleMedium)
@@ -121,13 +187,21 @@ fun AdminRoutineScreen(
                         ListItem(
                             headlineContent = { Text(item.label) },
                             supportingContent = {
-                                Text(buildString {
-                                    append("Time: ${formatTime(item.timeMinutes)} • ")
-                                    append("Repeat: ${item.repeatRule}")
-                                    if (item.repeatRule == RepeatRule.NONE) {
-                                        append(" • Date: ${item.date ?: "-"}")
+                                Text(
+                                    buildString {
+                                        append("Time: ${formatTime(item.timeMinutes)}")
+                                        item.endTimeMinutes?.let {
+                                            append(" - ${formatTime(it)}")
+                                        }
+                                        append(" • Repeat: ${item.repeatRule}")
+                                        if (item.repeatRule == RepeatRule.NONE) {
+                                            append(" • Date: ${item.date ?: "-"}")
+                                        }
+                                        if (!item.expectedLocationLabel.isNullOrBlank()) {
+                                            append(" • Place: ${item.expectedLocationLabel}")
+                                        }
                                     }
-                                })
+                                )
                             },
                             trailingContent = {
                                 Row {

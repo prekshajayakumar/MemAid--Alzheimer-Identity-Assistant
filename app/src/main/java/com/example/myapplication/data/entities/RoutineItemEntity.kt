@@ -12,25 +12,29 @@ import java.util.UUID
 data class RoutineItemEntity(
     @PrimaryKey val routineId: String = UUID.randomUUID().toString(),
 
-    // What the patient will read (short + simple)
     val label: String,
 
-    // Minutes from midnight (e.g., 9:30 AM = 9*60+30 = 570)
+    // start time in minutes from midnight
     val timeMinutes: Int,
 
-    // Repeat behavior
+    // end time in minutes from midnight
+    // if null, we will assume a default duration later
+    val endTimeMinutes: Int? = null,
+
     val repeatRule: RepeatRule = RepeatRule.NONE,
 
-    // For one-time events (when repeatRule = NONE)
-    // store as local date string "YYYY-MM-DD"
+    // for one-time events when repeatRule = NONE
     val date: String? = null,
+
+    // optional expected place for routine-aware monitoring
+    val expectedLocationLabel: String? = null,
 
     val enabled: Boolean = true,
     val createdAt: Long = System.currentTimeMillis()
 )
 
 enum class RepeatRule {
-    NONE,        // one-time (date required)
-    DAILY,       // everyday
-    WEEKDAYS     // Mon–Fri
+    NONE,
+    DAILY,
+    WEEKDAYS
 }
