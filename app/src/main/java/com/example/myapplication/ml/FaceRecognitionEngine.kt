@@ -13,6 +13,7 @@ class FaceRecognitionEngine(context: Context) {
     private val db = AppDb.get(appContext)
 
     private val THRESHOLD = 0.80f
+    private val SAFETY_FLOOR = 0.55f
 
     data class RecognitionResult(
         val personId: String?,
@@ -26,20 +27,32 @@ class FaceRecognitionEngine(context: Context) {
         val allVectors = db.vectorDao().allVectors()
         if (allVectors.isEmpty()) return@withContext RecognitionResult(null, 0f)
 
-        var bestScore = Float.NEGATIVE_INFINITY
-        var bestPersonId: String? = null
+        val scoresByPerson = mutableMapOf<String, Float>()
 
         for (v in allVectors) {
             val stored = EmbeddingCodec.fromByteArray(v.embedding)
             val score = FaceMatcher.cosineSimilarity(query, stored)
 
-            if (score > bestScore) {
-                bestScore = score
-                bestPersonId = v.personId
+            val previous = scoresByPerson[v.personId]
+            if (previous == null || score > previous) {
+                scoresByPerson[v.personId] = score
             }
         }
 
-        if (bestScore >= THRESHOLD) RecognitionResult(bestPersonId, bestScore)
-        else RecognitionResult(null, bestScore)
+        val best = scoresByPerson.maxByOrNull { it.value }
+            ?: return@withContext RecognitionResult(null, 0f)
+
+        val bestPersonId = best.key
+        val bestScore = best.value
+
+        if (bestScore < SAFETY_FLOOR) {
+            return@withContext RecognitionResult(null, bestScore)
+        }
+
+        if (bestScore >= THRESHOLD) {
+            RecognitionResult(bestPersonId, bestScore)
+        } else {
+            RecognitionResult(null, bestScore)
+        }
     }
 }

@@ -41,7 +41,8 @@ private enum class Screen {
     ADMIN_PEOPLE,
     ADMIN_ROUTINE,
     ADMIN_SETTINGS,
-    ADMIN_LOGS
+    ADMIN_LOGS,
+    REMEMBER_SAVED,
 }
 
 class MainActivity : ComponentActivity() {
@@ -210,7 +211,6 @@ class MainActivity : ComponentActivity() {
 
                                 Screen.UNKNOWN -> UnknownPersonScreen(
                                     onHelpMeRemember = {
-
                                         val path = lastFaceCropPath ?: lastCapturedPath
 
                                         if (path == null) {
@@ -225,7 +225,7 @@ class MainActivity : ComponentActivity() {
                                             peopleRepo.createPendingFromPhotoPaths(listOf(path))
                                             lastCapturedPath = null
                                             lastFaceCropPath = null
-                                            screen = Screen.PATIENT_HOME
+                                            screen = Screen.REMEMBER_SAVED
                                         }
                                     },
                                     onCallCaregiver = {
@@ -233,6 +233,14 @@ class MainActivity : ComponentActivity() {
                                         screen = Screen.PATIENT_HOME
                                     },
                                     onTimeoutReturnHome = {
+                                        screen = Screen.PATIENT_HOME
+                                    }
+                                )
+
+                                Screen.REMEMBER_SAVED -> RememberSavedScreen(
+                                    onBackHome = { screen = Screen.PATIENT_HOME },
+                                    onCallCaregiver = {
+                                        callCaregiver()
                                         screen = Screen.PATIENT_HOME
                                     }
                                 )
