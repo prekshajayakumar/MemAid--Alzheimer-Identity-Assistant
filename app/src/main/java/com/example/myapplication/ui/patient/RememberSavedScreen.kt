@@ -15,10 +15,6 @@ fun RememberSavedScreen(
     onBackHome: () -> Unit,
     onCallCaregiver: () -> Unit
 ) {
-    LaunchedEffect(Unit) {
-        delay(6000)
-        onBackHome()
-    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("MemAid") }) }

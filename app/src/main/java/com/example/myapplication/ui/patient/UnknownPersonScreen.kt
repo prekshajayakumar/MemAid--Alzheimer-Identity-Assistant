@@ -12,20 +12,10 @@ import kotlinx.coroutines.delay
 @Composable
 fun UnknownPersonScreen(
     onHelpMeRemember: () -> Unit,
-    onCallCaregiver: () -> Unit,
-    onTimeoutReturnHome: () -> Unit
+    onCallCaregiver: () -> Unit
 ) {
 
     var interacted by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-
-        delay(10000)
-
-        if (!interacted) {
-            onTimeoutReturnHome()
-        }
-    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("MemAid") }) }

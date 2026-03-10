@@ -304,9 +304,6 @@ class MainActivity : ComponentActivity() {
                                     onCallCaregiver = {
                                         callCaregiver()
                                         screen = Screen.PATIENT_HOME
-                                    },
-                                    onTimeoutReturnHome = {
-                                        screen = Screen.PATIENT_HOME
                                     }
                                 )
 
