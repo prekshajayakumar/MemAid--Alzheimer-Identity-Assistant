@@ -33,33 +33,56 @@ fun CameraScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-
     val scope = rememberCoroutineScope()
     val snack = remember { SnackbarHostState() }
 
     val camPermission = rememberPermissionState(android.Manifest.permission.CAMERA)
+
     LaunchedEffect(Unit) {
-        if (!camPermission.status.isGranted) camPermission.launchPermissionRequest()
+        if (!camPermission.status.isGranted) {
+            camPermission.launchPermissionRequest()
+        }
     }
 
     if (!camPermission.status.isGranted) {
         Scaffold(
-            snackbarHost = { SnackbarHost(snack) }
+            snackbarHost = { SnackbarHost(snack) },
+            topBar = {
+                TopAppBar(title = { Text("Recognize Person") })
+            }
         ) { padding ->
             Column(
-                Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Camera permission needed.")
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = { camPermission.launchPermissionRequest() }) {
+                Text("Camera permission is needed to recognize a person.")
+                Spacer(Modifier.height(12.dp))
+
+                Button(
+                    onClick = { camPermission.launchPermissionRequest() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text("Grant permission")
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = onCancel,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Back home")
                 }
             }
         }
         return
     }
+
+    var isProcessing by remember { mutableStateOf(false) }
 
     val controller = remember {
         LifecycleCameraController(context).apply {
@@ -75,13 +98,16 @@ fun CameraScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Recognize Person") },
-                navigationIcon = { TextButton(onClick = onCancel) { Text("Back") } }
+                navigationIcon = {
+                    TextButton(
+                        onClick = { if (!isProcessing) onCancel() }
+                    ) { Text("Back") }
+                }
             )
         },
         snackbarHost = { SnackbarHost(snack) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-
             AndroidView(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 factory = { ctx ->
@@ -89,27 +115,47 @@ fun CameraScreen(
                 }
             )
 
-            Button(
-                onClick = {
-                    captureToAppPictures(
-                        context = context,
-                        controller = controller,
-                        onSaved = { uri ->
-                            val path = uri?.path
-                            if (path.isNullOrBlank()) {
-                                scope.launch { snack.showSnackbar("Couldn’t read saved photo path.") }
-                            } else {
-                                onImageCaptured(path)
-                            }
-                        },
-                        onError = { e ->
-                            scope.launch { snack.showSnackbar("Capture failed: ${e.message ?: "unknown"}") }
-                        }
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Capture")
+                if (isProcessing) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(8.dp))
+                    Text("Scanning…")
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                Button(
+                    enabled = !isProcessing,
+                    onClick = {
+                        isProcessing = true
+                        captureToAppPictures(
+                            context = context,
+                            controller = controller,
+                            onSaved = { uri ->
+                                isProcessing = false
+                                val path = uri?.path
+                                if (path.isNullOrBlank()) {
+                                    scope.launch {
+                                        snack.showSnackbar("Couldn’t save photo.")
+                                    }
+                                } else {
+                                    onImageCaptured(path)
+                                }
+                            },
+                            onError = { e ->
+                                isProcessing = false
+                                scope.launch {
+                                    snack.showSnackbar("Capture failed: ${e.message ?: "unknown"}")
+                                }
+                            }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (isProcessing) "Please wait…" else "Capture")
+                }
             }
         }
     }

@@ -2,6 +2,7 @@ package com.example.myapplication.ml
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import com.example.myapplication.data.db.AppDb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,8 +13,8 @@ class FaceRecognitionEngine(context: Context) {
     private val embedder = FaceEmbedder(appContext)
     private val db = AppDb.get(appContext)
 
-    private val THRESHOLD = 0.80f
-    private val SAFETY_FLOOR = 0.55f
+    private val THRESHOLD = 0.65f
+    private val SAFETY_FLOOR = 0.45f
 
     data class RecognitionResult(
         val personId: String?,
@@ -21,11 +22,13 @@ class FaceRecognitionEngine(context: Context) {
     )
 
     suspend fun recognize(faceBitmap: Bitmap): RecognitionResult = withContext(Dispatchers.Default) {
-
         val query = embedder.embed(faceBitmap)
 
         val allVectors = db.vectorDao().allVectors()
-        if (allVectors.isEmpty()) return@withContext RecognitionResult(null, 0f)
+        if (allVectors.isEmpty()) {
+            Log.d("FaceRecognition", "No stored vectors.")
+            return@withContext RecognitionResult(null, 0f)
+        }
 
         val scoresByPerson = mutableMapOf<String, Float>()
 
@@ -44,6 +47,8 @@ class FaceRecognitionEngine(context: Context) {
 
         val bestPersonId = best.key
         val bestScore = best.value
+
+        Log.d("FaceRecognition", "bestPersonId=$bestPersonId bestScore=$bestScore threshold=$THRESHOLD")
 
         if (bestScore < SAFETY_FLOOR) {
             return@withContext RecognitionResult(null, bestScore)

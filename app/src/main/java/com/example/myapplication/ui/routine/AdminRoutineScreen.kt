@@ -1,17 +1,25 @@
 package com.example.myapplication.ui.routine
 
+import android.Manifest
+import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.data.entities.RepeatRule
 import com.example.myapplication.data.entities.RoutineItemEntity
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.android.gms.location.LocationServices
 import java.time.LocalDate
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun AdminRoutineScreen(
     allItems: List<RoutineItemEntity>,
@@ -30,6 +38,14 @@ fun AdminRoutineScreen(
     onToggle: (RoutineItemEntity, Boolean) -> Unit,
     onDelete: (RoutineItemEntity) -> Unit,
 ) {
+    val context = LocalContext.current
+    val locationPermissions = rememberMultiplePermissionsState(
+        permissions = listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    )
+
     var label by remember { mutableStateOf("") }
 
     var startHour by remember { mutableStateOf("9") }
@@ -39,12 +55,14 @@ fun AdminRoutineScreen(
     var endMinute by remember { mutableStateOf("00") }
 
     var expectedLocation by remember { mutableStateOf("") }
-    var latitude by remember { mutableStateOf("") }
-    var longitude by remember { mutableStateOf("") }
+    var expectedLatitude by remember { mutableStateOf<Double?>(null) }
+    var expectedLongitude by remember { mutableStateOf<Double?>(null) }
     var radius by remember { mutableStateOf("150") }
 
     var rule by remember { mutableStateOf(RepeatRule.DAILY) }
     var date by remember { mutableStateOf(LocalDate.now().toString()) }
+
+    var message by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -131,26 +149,6 @@ fun AdminRoutineScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            Row(Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = latitude,
-                    onValueChange = { latitude = it.filter { c -> c.isDigit() || c == '.' || c == '-' } },
-                    label = { Text("Latitude") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true
-                )
-                Spacer(Modifier.width(8.dp))
-                OutlinedTextField(
-                    value = longitude,
-                    onValueChange = { longitude = it.filter { c -> c.isDigit() || c == '.' || c == '-' } },
-                    label = { Text("Longitude") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
             OutlinedTextField(
                 value = radius,
                 onValueChange = { radius = it.filter { c -> c.isDigit() || c == '.' } },
@@ -158,6 +156,69 @@ fun AdminRoutineScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = {
+                        if (locationPermissions.permissions.none { it.status.isGranted }) {
+                            locationPermissions.launchMultiplePermissionRequest()
+                        } else {
+                            fetchCurrentLocation(
+                                context = context,
+                                onLocation = { lat, lon ->
+                                    expectedLatitude = lat
+                                    expectedLongitude = lon
+                                    message = "Current location saved."
+                                },
+                                onError = {
+                                    message = it
+                                }
+                            )
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Use current location")
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        expectedLatitude = null
+                        expectedLongitude = null
+                        message = "Saved location cleared."
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Clear location")
+                }
+            }
+
+            if (expectedLatitude != null && expectedLongitude != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "GPS set: ${
+                        String.format(
+                            Locale.US,
+                            "%.5f, %.5f",
+                            expectedLatitude,
+                            expectedLongitude
+                        )
+                    }",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            if (message != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = message!!,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
 
             Spacer(Modifier.height(12.dp))
 
@@ -192,9 +253,6 @@ fun AdminRoutineScreen(
 
                     val d = if (rule == RepeatRule.NONE) date else null
                     val expectedPlace = expectedLocation.trim().ifBlank { null }
-
-                    val lat = latitude.toDoubleOrNull()
-                    val lon = longitude.toDoubleOrNull()
                     val rad = radius.toFloatOrNull()
 
                     if (label.isNotBlank()) {
@@ -205,15 +263,17 @@ fun AdminRoutineScreen(
                             d,
                             endTimeMinutes,
                             expectedPlace,
-                            lat,
-                            lon,
+                            expectedLatitude,
+                            expectedLongitude,
                             rad
                         )
+
                         label = ""
                         expectedLocation = ""
-                        latitude = ""
-                        longitude = ""
+                        expectedLatitude = null
+                        expectedLongitude = null
                         radius = "150"
+                        message = "Routine item added."
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -259,7 +319,9 @@ fun AdminRoutineScreen(
                                         onCheckedChange = { onToggle(item, it) }
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    TextButton(onClick = { onDelete(item) }) { Text("Delete") }
+                                    TextButton(onClick = { onDelete(item) }) {
+                                        Text("Delete")
+                                    }
                                 }
                             }
                         )
@@ -269,6 +331,26 @@ fun AdminRoutineScreen(
             }
         }
     }
+}
+
+@SuppressLint("MissingPermission")
+private fun fetchCurrentLocation(
+    context: android.content.Context,
+    onLocation: (Double, Double) -> Unit,
+    onError: (String) -> Unit
+) {
+    val client = LocationServices.getFusedLocationProviderClient(context)
+    client.lastLocation
+        .addOnSuccessListener { location ->
+            if (location != null) {
+                onLocation(location.latitude, location.longitude)
+            } else {
+                onError("Could not get current location. Try again outdoors or with GPS enabled.")
+            }
+        }
+        .addOnFailureListener {
+            onError("Could not get current location.")
+        }
 }
 
 @Composable
