@@ -1,5 +1,7 @@
 package com.example.myapplication
 
+import android.Manifest
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
@@ -12,19 +14,35 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.db.AppDb
+import com.example.myapplication.data.entities.DeviationEventEntity
+import com.example.myapplication.data.entities.DeviationEventType
+import com.example.myapplication.data.entities.RecognitionLogEntity
+import com.example.myapplication.data.entities.RecognitionOutcome
+import com.example.myapplication.data.repo.DeviationEventRepository
+import com.example.myapplication.data.repo.LogsRepository
 import com.example.myapplication.data.repo.PeopleRepository
 import com.example.myapplication.ml.FaceCropper
 import com.example.myapplication.ml.FaceRecognitionEngine
-import com.example.myapplication.ui.admin.*
+import com.example.myapplication.receiver.DeviationMonitorService
+import com.example.myapplication.ui.admin.AdminDashboardScreen
+import com.example.myapplication.ui.admin.AdminLogsScreen
+import com.example.myapplication.ui.admin.AdminPeopleScreen
+import com.example.myapplication.ui.admin.AdminPinScreen
+import com.example.myapplication.ui.admin.AdminSettingsScreen
+import com.example.myapplication.ui.admin.LogsViewModel
 import com.example.myapplication.ui.assist.CameraScreen
-import com.example.myapplication.ui.patient.*
+import com.example.myapplication.ui.patient.PatientHomeScreen
+import com.example.myapplication.ui.patient.PostEventSummaryScreen
+import com.example.myapplication.ui.patient.RecognizedPersonScreen
+import com.example.myapplication.ui.patient.RememberSavedScreen
+import com.example.myapplication.ui.patient.UnknownPersonScreen
 import com.example.myapplication.ui.routine.AdminRoutineScreen
 import com.example.myapplication.ui.routine.RoutineViewModel
 import com.example.myapplication.util.CallCaregiver
 import com.example.myapplication.util.CaregiverPrefs
-import com.example.myapplication.data.entities.RecognitionLogEntity
-import com.example.myapplication.data.entities.RecognitionOutcome
-import com.example.myapplication.data.repo.LogsRepository
+import com.example.myapplication.util.PostEventSummaryBuilder
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,18 +53,20 @@ private enum class Screen {
     PATIENT_HOME,
     CAMERA,
     UNKNOWN,
+    REMEMBER_SAVED,
     RECOGNIZED,
+    POST_EVENT_SUMMARY,
     ADMIN_PIN,
     ADMIN_DASHBOARD,
     ADMIN_PEOPLE,
     ADMIN_ROUTINE,
     ADMIN_SETTINGS,
-    ADMIN_LOGS,
-    REMEMBER_SAVED,
+    ADMIN_LOGS
 }
 
 class MainActivity : ComponentActivity() {
 
+    @OptIn(ExperimentalPermissionsApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -55,17 +75,22 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier) {
 
                     val routineVm: RoutineViewModel = viewModel()
-                    val today by routineVm.todaysRoutines.collectAsState()
                     val all by routineVm.allRoutines.collectAsState()
+                    val currentRoutine by routineVm.currentRoutine.collectAsState()
+                    val nextRoutine by routineVm.nextRoutine.collectAsState()
 
                     val db = remember { AppDb.get(applicationContext) }
                     val peopleRepo = remember { PeopleRepository(db) }
                     val logsRepo = remember { LogsRepository(db.recognitionLogDao()) }
+                    val deviationEventRepo = remember { DeviationEventRepository(db.deviationEventDao()) }
 
                     val recogEngine = remember { FaceRecognitionEngine(applicationContext) }
 
                     var recognizedName by remember { mutableStateOf<String?>(null) }
                     var recognizedRelation by remember { mutableStateOf<String?>(null) }
+
+                    var postEventSummary by remember { mutableStateOf<String?>(null) }
+                    var postEventSummaryIds by remember { mutableStateOf<List<String>>(emptyList()) }
 
                     var screen by remember { mutableStateOf(Screen.PATIENT_HOME) }
 
@@ -78,8 +103,27 @@ class MainActivity : ComponentActivity() {
                     var adminAuthedAt by remember { mutableStateOf<Long?>(null) }
                     val ADMIN_TIMEOUT_MS = 2 * 60 * 1000L
 
-                    val currentRoutine by routineVm.currentRoutine.collectAsState()
-                    val nextRoutine by routineVm.nextRoutine.collectAsState()
+                    val locationPermissions = rememberMultiplePermissionsState(
+                        permissions = listOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
+
+                    LaunchedEffect(Unit) {
+                        locationPermissions.launchMultiplePermissionRequest()
+                    }
+
+                    val allLocationGranted = locationPermissions.permissions.any { it.status.isGranted }
+
+                    LaunchedEffect(allLocationGranted) {
+                        val intent = Intent(this@MainActivity, DeviationMonitorService::class.java)
+                        if (allLocationGranted) {
+                            startService(intent)
+                        } else {
+                            stopService(intent)
+                        }
+                    }
 
                     fun isAdminExpired(): Boolean {
                         val t = adminAuthedAt ?: return true
@@ -97,6 +141,14 @@ class MainActivity : ComponentActivity() {
                                 snack.showSnackbar("Set caregiver number in Admin → Settings")
                             }
                         } else {
+                            scope.launch {
+                                deviationEventRepo.insert(
+                                    DeviationEventEntity(
+                                        eventType = DeviationEventType.CAREGIVER_CALL,
+                                        details = "Caregiver call started from app"
+                                    )
+                                )
+                            }
                             CallCaregiver.dial(this@MainActivity, phone)
                         }
                     }
@@ -113,7 +165,7 @@ class MainActivity : ComponentActivity() {
                             }
 
                             file.absolutePath
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             null
                         }
                     }
@@ -134,6 +186,18 @@ class MainActivity : ComponentActivity() {
                                     imagePath = imagePath
                                 )
                             )
+                        }
+                    }
+
+                    LaunchedEffect(screen) {
+                        if (screen == Screen.PATIENT_HOME) {
+                            val since = System.currentTimeMillis() - 12 * 60 * 60 * 1000L
+                            val events = deviationEventRepo.recentUnresolvedSince(since)
+                            if (events.isNotEmpty()) {
+                                postEventSummary = PostEventSummaryBuilder.build(events)
+                                postEventSummaryIds = events.map { it.eventId }
+                                screen = Screen.POST_EVENT_SUMMARY
+                            }
                         }
                     }
 
@@ -158,11 +222,9 @@ class MainActivity : ComponentActivity() {
 
                                 Screen.CAMERA -> CameraScreen(
                                     onImageCaptured = { path ->
-
                                         lastCapturedPath = path
 
                                         scope.launch(Dispatchers.Default) {
-
                                             val bmp = BitmapFactory.decodeFile(path)
                                             if (bmp == null) {
                                                 withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
@@ -227,6 +289,12 @@ class MainActivity : ComponentActivity() {
 
                                         scope.launch {
                                             peopleRepo.createPendingFromPhotoPaths(listOf(path))
+                                            deviationEventRepo.insert(
+                                                DeviationEventEntity(
+                                                    eventType = DeviationEventType.UNKNOWN_PERSON_SAVED,
+                                                    details = "Unknown person saved for caregiver review"
+                                                )
+                                            )
                                             lastCapturedPath = null
                                             lastFaceCropPath = null
                                             screen = Screen.REMEMBER_SAVED
@@ -246,6 +314,20 @@ class MainActivity : ComponentActivity() {
                                     onCallCaregiver = {
                                         callCaregiver()
                                         screen = Screen.PATIENT_HOME
+                                    }
+                                )
+
+                                Screen.POST_EVENT_SUMMARY -> PostEventSummaryScreen(
+                                    summaryText = postEventSummary ?: "Everything went as planned.",
+                                    onDone = {
+                                        scope.launch {
+                                            if (postEventSummaryIds.isNotEmpty()) {
+                                                deviationEventRepo.markResolved(postEventSummaryIds)
+                                            }
+                                            postEventSummary = null
+                                            postEventSummaryIds = emptyList()
+                                            screen = Screen.PATIENT_HOME
+                                        }
                                     }
                                 )
 
@@ -276,7 +358,6 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 Screen.ADMIN_PEOPLE -> {
-
                                     val pending by peopleRepo.pending()
                                         .collectAsState(initial = emptyList())
 
@@ -290,7 +371,6 @@ class MainActivity : ComponentActivity() {
                                                 .firstOrNull()
                                                 ?.imagePath
                                                 .orEmpty()
-
                                             person.personId to path
                                         }
                                     }
@@ -300,7 +380,6 @@ class MainActivity : ComponentActivity() {
                                         photoPathByPersonId = photoPathByPersonId,
                                         onApprove = { id, name, relation ->
                                             scope.launch {
-
                                                 val approved = peopleRepo.approvePendingWithEmbeddings(
                                                     appContext = applicationContext,
                                                     personId = id,
@@ -321,14 +400,17 @@ class MainActivity : ComponentActivity() {
                                     AdminRoutineScreen(
                                         allItems = all,
                                         onBack = { screen = Screen.ADMIN_DASHBOARD },
-                                        onAdd = { label, time, rule, date, endTimeMinutes, expectedLocationLabel ->
+                                        onAdd = { label, time, rule, date, endTimeMinutes, expectedLocationLabel, expectedLatitude, expectedLongitude, allowedRadiusMeters ->
                                             routineVm.addQuick(
                                                 label = label,
                                                 timeMinutes = time,
                                                 repeatRule = rule,
                                                 date = date,
                                                 endTimeMinutes = endTimeMinutes,
-                                                expectedLocationLabel = expectedLocationLabel
+                                                expectedLocationLabel = expectedLocationLabel,
+                                                expectedLatitude = expectedLatitude,
+                                                expectedLongitude = expectedLongitude,
+                                                allowedRadiusMeters = allowedRadiusMeters
                                             )
                                         },
                                         onToggle = { item, enabled ->
@@ -347,7 +429,6 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 Screen.ADMIN_LOGS -> {
-
                                     val logsVm: LogsViewModel = viewModel()
                                     val logs by logsVm.logs.collectAsState(initial = emptyList())
 

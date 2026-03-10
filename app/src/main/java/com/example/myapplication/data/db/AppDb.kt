@@ -5,18 +5,20 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.example.myapplication.data.dao.DeviationEventDao
 import com.example.myapplication.data.dao.EncounterDao
 import com.example.myapplication.data.dao.FaceVectorDao
-import com.example.myapplication.data.dao.PersonDao
-import com.example.myapplication.data.dao.RoutineDao
 import com.example.myapplication.data.dao.GalleryDao
+import com.example.myapplication.data.dao.PersonDao
 import com.example.myapplication.data.dao.RecognitionLogDao
+import com.example.myapplication.data.dao.RoutineDao
+import com.example.myapplication.data.entities.DeviationEventEntity
 import com.example.myapplication.data.entities.EncounterEntity
 import com.example.myapplication.data.entities.FaceVectorEntity
 import com.example.myapplication.data.entities.GalleryEntity
 import com.example.myapplication.data.entities.PersonEntity
-import com.example.myapplication.data.entities.RoutineItemEntity
 import com.example.myapplication.data.entities.RecognitionLogEntity
+import com.example.myapplication.data.entities.RoutineItemEntity
 import com.example.myapplication.util.KeyStoreHelper
 import net.sqlcipher.database.SQLiteDatabase
 import net.sqlcipher.database.SupportFactory
@@ -28,9 +30,10 @@ import net.sqlcipher.database.SupportFactory
         FaceVectorEntity::class,
         EncounterEntity::class,
         RoutineItemEntity::class,
-        RecognitionLogEntity::class
+        RecognitionLogEntity::class,
+        DeviationEventEntity::class
     ],
-    version = 3,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -42,9 +45,11 @@ abstract class AppDb : RoomDatabase() {
     abstract fun encounterDao(): EncounterDao
     abstract fun routineDao(): RoutineDao
     abstract fun recognitionLogDao(): RecognitionLogDao
+    abstract fun deviationEventDao(): DeviationEventDao
 
     companion object {
-        @Volatile private var INSTANCE: AppDb? = null
+        @Volatile
+        private var INSTANCE: AppDb? = null
 
         fun get(context: Context): AppDb {
             return INSTANCE ?: synchronized(this) {

@@ -8,7 +8,11 @@ import com.example.myapplication.data.entities.RepeatRule
 import com.example.myapplication.data.entities.RoutineItemEntity
 import com.example.myapplication.data.repo.RoutineRepository
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -16,8 +20,14 @@ import java.time.LocalTime
 
 class RoutineViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val db = AppDb.get(app)
-    private val repo = RoutineRepository(db.routineDao())
+    private val db: AppDb
+    private val repo: RoutineRepository
+
+    init {
+        val appContext = app.applicationContext
+        db = AppDb.get(appContext)
+        repo = RoutineRepository(db.routineDao())
+    }
 
     val allRoutines: StateFlow<List<RoutineItemEntity>> =
         repo.observeAll()
@@ -68,7 +78,10 @@ class RoutineViewModel(app: Application) : AndroidViewModel(app) {
         repeatRule: RepeatRule,
         date: String?,
         endTimeMinutes: Int? = null,
-        expectedLocationLabel: String? = null
+        expectedLocationLabel: String? = null,
+        expectedLatitude: Double? = null,
+        expectedLongitude: Double? = null,
+        allowedRadiusMeters: Float? = null
     ) {
         viewModelScope.launch {
             repo.upsert(
@@ -78,7 +91,10 @@ class RoutineViewModel(app: Application) : AndroidViewModel(app) {
                     endTimeMinutes = endTimeMinutes,
                     repeatRule = repeatRule,
                     date = date,
-                    expectedLocationLabel = expectedLocationLabel
+                    expectedLocationLabel = expectedLocationLabel,
+                    expectedLatitude = expectedLatitude,
+                    expectedLongitude = expectedLongitude,
+                    allowedRadiusMeters = allowedRadiusMeters
                 )
             )
         }
@@ -105,6 +121,7 @@ class RoutineViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun isWeekday(date: LocalDate): Boolean {
-        return date.dayOfWeek != DayOfWeek.SATURDAY && date.dayOfWeek != DayOfWeek.SUNDAY
+        return date.dayOfWeek != DayOfWeek.SATURDAY &&
+                date.dayOfWeek != DayOfWeek.SUNDAY
     }
 }

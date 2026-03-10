@@ -14,20 +14,16 @@ data class RoutineItemEntity(
 
     val label: String,
 
-    // start time in minutes from midnight
     val timeMinutes: Int,
-
-    // end time in minutes from midnight
-    // if null, we will assume a default duration later
     val endTimeMinutes: Int? = null,
 
     val repeatRule: RepeatRule = RepeatRule.NONE,
-
-    // for one-time events when repeatRule = NONE
     val date: String? = null,
 
-    // optional expected place for routine-aware monitoring
     val expectedLocationLabel: String? = null,
+    val expectedLatitude: Double? = null,
+    val expectedLongitude: Double? = null,
+    val allowedRadiusMeters: Float? = null,
 
     val enabled: Boolean = true,
     val createdAt: Long = System.currentTimeMillis()
