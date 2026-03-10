@@ -22,20 +22,28 @@ object FaceCropper {
         return suspendCancellableCoroutine { cont ->
             detector.process(image)
                 .addOnSuccessListener { faces ->
-                    val biggest = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
+                    val biggest = faces.maxByOrNull {
+                        it.boundingBox.width() * it.boundingBox.height()
+                    }
                     cont.resume(biggest?.boundingBox)
                 }
-                .addOnFailureListener { cont.resume(null) }
+                .addOnFailureListener {
+                    cont.resume(null)
+                }
         }
     }
 
-    fun crop(bitmap: Bitmap, rect: Rect): Bitmap? {
-        val left = rect.left.coerceAtLeast(0)
-        val top = rect.top.coerceAtLeast(0)
-        val right = rect.right.coerceAtMost(bitmap.width)
-        val bottom = rect.bottom.coerceAtMost(bitmap.height)
+    fun crop(bitmap: Bitmap, rect: Rect, paddingRatio: Float = 0.20f): Bitmap? {
+        val padX = (rect.width() * paddingRatio).toInt()
+        val padY = (rect.height() * paddingRatio).toInt()
+
+        val left = (rect.left - padX).coerceAtLeast(0)
+        val top = (rect.top - padY).coerceAtLeast(0)
+        val right = (rect.right + padX).coerceAtMost(bitmap.width)
+        val bottom = (rect.bottom + padY).coerceAtMost(bitmap.height)
 
         if (right <= left || bottom <= top) return null
+
         return Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
     }
 }
