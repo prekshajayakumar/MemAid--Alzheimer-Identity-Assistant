@@ -13,7 +13,6 @@ data class RoutineItemEntity(
     @PrimaryKey val routineId: String = UUID.randomUUID().toString(),
 
     val label: String,
-
     val timeMinutes: Int,
     val endTimeMinutes: Int? = null,
 

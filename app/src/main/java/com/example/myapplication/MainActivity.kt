@@ -401,14 +401,17 @@ class MainActivity : ComponentActivity() {
                                     AdminRoutineScreen(
                                         allItems = all,
                                         onBack = { screen = Screen.ADMIN_DASHBOARD },
-                                        onAdd = { label, time, rule, date, endTimeMinutes, expectedLocationLabel ->
+                                        onAdd = { label, time, rule, date, endTimeMinutes, expectedLocationLabel, expectedLatitude, expectedLongitude, allowedRadiusMeters ->
                                             routineVm.addQuick(
                                                 label = label,
                                                 timeMinutes = time,
                                                 repeatRule = rule,
                                                 date = date,
                                                 endTimeMinutes = endTimeMinutes,
-                                                expectedLocationLabel = expectedLocationLabel
+                                                expectedLocationLabel = expectedLocationLabel,
+                                                expectedLatitude = expectedLatitude,
+                                                expectedLongitude = expectedLongitude,
+                                                allowedRadiusMeters = allowedRadiusMeters
                                             )
                                         },
                                         onToggle = { item, enabled ->

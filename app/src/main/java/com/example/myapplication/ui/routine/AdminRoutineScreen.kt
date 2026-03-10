@@ -19,10 +19,13 @@ fun AdminRoutineScreen(
     onAdd: (
         label: String,
         timeMinutes: Int,
-        repeatRule: RepeatRule,
+        rule: RepeatRule,
         date: String?,
         endTimeMinutes: Int?,
-        expectedLocationLabel: String?
+        expectedLocationLabel: String?,
+        expectedLatitude: Double?,
+        expectedLongitude: Double?,
+        allowedRadiusMeters: Float?
     ) -> Unit,
     onToggle: (RoutineItemEntity, Boolean) -> Unit,
     onDelete: (RoutineItemEntity) -> Unit,
@@ -36,6 +39,9 @@ fun AdminRoutineScreen(
     var endMinute by remember { mutableStateOf("00") }
 
     var expectedLocation by remember { mutableStateOf("") }
+    var latitude by remember { mutableStateOf("") }
+    var longitude by remember { mutableStateOf("") }
+    var radius by remember { mutableStateOf("150") }
 
     var rule by remember { mutableStateOf(RepeatRule.DAILY) }
     var date by remember { mutableStateOf(LocalDate.now().toString()) }
@@ -118,7 +124,37 @@ fun AdminRoutineScreen(
             OutlinedTextField(
                 value = expectedLocation,
                 onValueChange = { expectedLocation = it },
-                label = { Text("Expected place (optional)") },
+                label = { Text("Expected place label") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = latitude,
+                    onValueChange = { latitude = it.filter { c -> c.isDigit() || c == '.' || c == '-' } },
+                    label = { Text("Latitude") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+                Spacer(Modifier.width(8.dp))
+                OutlinedTextField(
+                    value = longitude,
+                    onValueChange = { longitude = it.filter { c -> c.isDigit() || c == '.' || c == '-' } },
+                    label = { Text("Longitude") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = radius,
+                onValueChange = { radius = it.filter { c -> c.isDigit() || c == '.' } },
+                label = { Text("Allowed radius (meters)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -157,6 +193,10 @@ fun AdminRoutineScreen(
                     val d = if (rule == RepeatRule.NONE) date else null
                     val expectedPlace = expectedLocation.trim().ifBlank { null }
 
+                    val lat = latitude.toDoubleOrNull()
+                    val lon = longitude.toDoubleOrNull()
+                    val rad = radius.toFloatOrNull()
+
                     if (label.isNotBlank()) {
                         onAdd(
                             label.trim(),
@@ -164,10 +204,16 @@ fun AdminRoutineScreen(
                             rule,
                             d,
                             endTimeMinutes,
-                            expectedPlace
+                            expectedPlace,
+                            lat,
+                            lon,
+                            rad
                         )
                         label = ""
                         expectedLocation = ""
+                        latitude = ""
+                        longitude = ""
+                        radius = "150"
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -199,6 +245,9 @@ fun AdminRoutineScreen(
                                         }
                                         if (!item.expectedLocationLabel.isNullOrBlank()) {
                                             append(" • Place: ${item.expectedLocationLabel}")
+                                        }
+                                        if (item.expectedLatitude != null && item.expectedLongitude != null) {
+                                            append(" • GPS set")
                                         }
                                     }
                                 )
