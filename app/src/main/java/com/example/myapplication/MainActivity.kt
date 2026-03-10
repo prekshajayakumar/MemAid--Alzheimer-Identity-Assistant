@@ -43,6 +43,7 @@ import com.example.myapplication.util.CaregiverPrefs
 import com.example.myapplication.util.PostEventSummaryBuilder
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.isGranted
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -400,17 +401,14 @@ class MainActivity : ComponentActivity() {
                                     AdminRoutineScreen(
                                         allItems = all,
                                         onBack = { screen = Screen.ADMIN_DASHBOARD },
-                                        onAdd = { label, time, rule, date, endTimeMinutes, expectedLocationLabel, expectedLatitude, expectedLongitude, allowedRadiusMeters ->
+                                        onAdd = { label, time, rule, date, endTimeMinutes, expectedLocationLabel ->
                                             routineVm.addQuick(
                                                 label = label,
                                                 timeMinutes = time,
                                                 repeatRule = rule,
                                                 date = date,
                                                 endTimeMinutes = endTimeMinutes,
-                                                expectedLocationLabel = expectedLocationLabel,
-                                                expectedLatitude = expectedLatitude,
-                                                expectedLongitude = expectedLongitude,
-                                                allowedRadiusMeters = allowedRadiusMeters
+                                                expectedLocationLabel = expectedLocationLabel
                                             )
                                         },
                                         onToggle = { item, enabled ->
