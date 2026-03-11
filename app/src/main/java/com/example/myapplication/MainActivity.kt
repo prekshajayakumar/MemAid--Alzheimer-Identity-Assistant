@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
                                 RecognitionLogEntity(
                                     outcome = outcome,
                                     bestScore = bestScore,
-                                    threshold = 0.80f,
+//                                    threshold = 0.80f,
                                     personId = personId,
                                     imagePath = imagePath
                                 )

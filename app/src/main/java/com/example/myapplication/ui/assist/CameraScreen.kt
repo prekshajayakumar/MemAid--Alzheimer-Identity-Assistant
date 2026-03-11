@@ -107,16 +107,22 @@ fun CameraScreen(
         },
         snackbarHost = { SnackbarHost(snack) }
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             AndroidView(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 factory = { ctx ->
                     PreviewView(ctx).apply { this.controller = controller }
                 }
             )
 
             Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (isProcessing) {

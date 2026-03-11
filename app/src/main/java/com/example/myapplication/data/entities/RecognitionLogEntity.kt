@@ -14,7 +14,7 @@ data class RecognitionLogEntity(
     val ts: Long = System.currentTimeMillis(),
     val outcome: RecognitionOutcome,
     val bestScore: Float? = null,
-    val threshold: Float? = null,
+    //val threshold: Float? = null,
     val personId: String? = null,
     val imagePath: String? = null
 )
