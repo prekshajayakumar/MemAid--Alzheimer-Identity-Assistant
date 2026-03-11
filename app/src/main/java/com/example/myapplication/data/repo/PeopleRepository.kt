@@ -2,6 +2,7 @@ package com.example.myapplication.data.repo
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.util.Log
 import com.example.myapplication.data.db.AppDb
 import com.example.myapplication.data.entities.FaceVectorEntity
 import com.example.myapplication.data.entities.GalleryEntity
@@ -10,7 +11,6 @@ import com.example.myapplication.data.entities.PersonStatus
 import com.example.myapplication.ml.EmbeddingCodec
 import com.example.myapplication.ml.FaceCropper
 import com.example.myapplication.ml.FaceEmbedder
-import com.example.myapplication.ml.FaceQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -67,14 +67,6 @@ class PeopleRepository(
         galleryDao.insertAll(items)
     }
 
-    suspend fun photoCountForPerson(personId: String): Int {
-        return galleryDao.listForPerson(personId).size
-    }
-
-    suspend fun firstPhotoPathForPerson(personId: String): String? {
-        return galleryDao.listForPerson(personId).firstOrNull()?.imagePath
-    }
-
     suspend fun approvePendingWithEmbeddings(
         appContext: Context,
         personId: String,
@@ -83,6 +75,8 @@ class PeopleRepository(
     ): Boolean {
         val current = personDao.getById(personId) ?: return false
         val stored = generateAndStoreEmbeddings(appContext, personId)
+
+        Log.d("Enrollment", "personId=$personId storedVectors=$stored")
 
         if (stored == 0) return false
 
@@ -102,25 +96,34 @@ class PeopleRepository(
     ): Int = withContext(Dispatchers.Default) {
 
         val gallery = galleryDao.listForPerson(personId)
-        if (gallery.isEmpty()) return@withContext 0
+        if (gallery.isEmpty()) {
+            Log.d("Enrollment", "No gallery images for personId=$personId")
+            return@withContext 0
+        }
 
         val embedder = FaceEmbedder(context.applicationContext)
 
         try {
             val vectors = mutableListOf<FaceVectorEntity>()
 
-            for (g in gallery) {
-                val bmp = BitmapFactory.decodeFile(g.imagePath) ?: continue
+            for ((index, g) in gallery.withIndex()) {
+                val bmp = BitmapFactory.decodeFile(g.imagePath)
+                if (bmp == null) {
+                    Log.d("Enrollment", "[$index] decode failed path=${g.imagePath}")
+                    continue
+                }
 
                 val rect = FaceCropper.detectLargestFace(bmp)
                 val faceBitmap = if (rect != null) {
-                    FaceCropper.crop(bmp, rect)
+                    FaceCropper.crop(bmp, rect) ?: bmp
                 } else {
                     bmp
-                } ?: continue
+                }
 
-                val quality = FaceQuality.evaluate(faceBitmap)
-                if (!quality.accepted) continue
+                if (faceBitmap.width < 32 || faceBitmap.height < 32) {
+                    Log.d("Enrollment", "[$index] skipped small image ${faceBitmap.width}x${faceBitmap.height}")
+                    continue
+                }
 
                 val embedding = embedder.embed(faceBitmap)
 
@@ -128,16 +131,22 @@ class PeopleRepository(
                     FaceVectorEntity(
                         personId = personId,
                         embedding = EmbeddingCodec.toByteArray(embedding),
-                        quality = quality.sharpness
+                        quality = 1f
                     )
                 )
+
+                Log.d("Enrollment", "[$index] vector created")
             }
 
-            if (vectors.isEmpty()) return@withContext 0
+            if (vectors.isEmpty()) {
+                Log.d("Enrollment", "No usable vectors created for personId=$personId")
+                return@withContext 0
+            }
 
             vectorDao.deleteForPerson(personId)
             vectorDao.insertAll(vectors)
 
+            Log.d("Enrollment", "Inserted ${vectors.size} vectors for personId=$personId")
             return@withContext vectors.size
         } finally {
             embedder.close()

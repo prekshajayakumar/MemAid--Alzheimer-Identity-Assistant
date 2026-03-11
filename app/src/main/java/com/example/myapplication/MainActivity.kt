@@ -245,6 +245,7 @@ class MainActivity : ComponentActivity() {
                                             }
 
                                             val result = recogEngine.recognize(face)
+                                            android.util.Log.d("FaceRecognition", "MainActivity result personId=${result.personId} score=${result.bestScore}")
 
                                             if (result.personId == null) {
                                                 withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }

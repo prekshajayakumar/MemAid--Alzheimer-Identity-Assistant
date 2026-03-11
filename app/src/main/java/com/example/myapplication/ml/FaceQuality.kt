@@ -14,7 +14,8 @@ object FaceQuality {
     fun evaluate(bitmap: Bitmap): FaceQualityResult {
         val w = bitmap.width
         val h = bitmap.height
-        if (w < 64 || h < 64) {
+
+        if (w < 48 || h < 48) {
             return FaceQualityResult(
                 accepted = false,
                 brightness = 0f,
@@ -34,6 +35,7 @@ object FaceQuality {
             val r = (p shr 16) and 0xFF
             val g = (p shr 8) and 0xFF
             val b = p and 0xFF
+
             val y = 0.299f * r + 0.587f * g + 0.114f * b
             gray[i] = y
             sum += y
@@ -65,9 +67,9 @@ object FaceQuality {
         val brightness = mean
 
         val accepted =
-            brightness in 50f..210f &&
-                    contrast >= 350f &&
-                    sharpness >= 12f
+            brightness in 30f..235f &&
+                    contrast >= 120f &&
+                    sharpness >= 6f
 
         return FaceQualityResult(
             accepted = accepted,
