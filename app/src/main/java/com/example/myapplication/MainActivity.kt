@@ -62,7 +62,8 @@ private enum class Screen {
     ADMIN_PEOPLE,
     ADMIN_ROUTINE,
     ADMIN_SETTINGS,
-    ADMIN_LOGS
+    ADMIN_LOGS,
+    ADMIN_CAPTURE_MORE_PHOTOS,
 }
 
 class MainActivity : ComponentActivity() {
@@ -125,6 +126,7 @@ class MainActivity : ComponentActivity() {
                             stopService(intent)
                         }
                     }
+                    var pendingCapturePersonId by remember { mutableStateOf<String?>(null) }
 
                     fun isAdminExpired(): Boolean {
                         val t = adminAuthedAt ?: return true
@@ -373,9 +375,23 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
 
+                                    val photoCountByPersonId by produceState<Map<String, Int>>(
+                                        initialValue = emptyMap(),
+                                        key1 = pending
+                                    ) {
+                                        value = pending.associate { person ->
+                                            person.personId to db.galleryDao().listForPerson(person.personId).size
+                                        }
+                                    }
+
                                     AdminPeopleScreen(
                                         pending = pending,
                                         photoPathByPersonId = photoPathByPersonId,
+                                        photoCountByPersonId = photoCountByPersonId,
+                                        onCaptureMorePhotos = { personId ->
+                                            pendingCapturePersonId = personId
+                                            screen = Screen.ADMIN_CAPTURE_MORE_PHOTOS
+                                        },
                                         onApprove = { id, name, relation ->
                                             scope.launch {
                                                 val approved = peopleRepo.approvePendingWithEmbeddings(
@@ -386,13 +402,30 @@ class MainActivity : ComponentActivity() {
                                                 )
 
                                                 if (!approved) {
-                                                    snack.showSnackbar("Couldn’t create face vectors. Try clearer photo.")
+                                                    snack.showSnackbar("Couldn’t create face vectors. Try clearer photos.")
                                                 }
                                             }
                                         },
                                         onBack = { screen = Screen.ADMIN_DASHBOARD }
                                     )
                                 }
+
+                                Screen.ADMIN_CAPTURE_MORE_PHOTOS -> CameraScreen(
+                                    onImageCaptured = { path ->
+                                        val targetId = pendingCapturePersonId
+                                        if (targetId == null) {
+                                            screen = Screen.ADMIN_PEOPLE
+                                            return@CameraScreen
+                                        }
+
+                                        scope.launch {
+                                            peopleRepo.addPhotosToPending(targetId, listOf(path))
+                                            snack.showSnackbar("Photo added.")
+                                            screen = Screen.ADMIN_PEOPLE
+                                        }
+                                    },
+                                    onCancel = { screen = Screen.ADMIN_PEOPLE }
+                                )
 
                                 Screen.ADMIN_ROUTINE -> {
                                     AdminRoutineScreen(

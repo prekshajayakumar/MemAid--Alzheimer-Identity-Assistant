@@ -48,6 +48,33 @@ class PeopleRepository(
         return person.personId
     }
 
+    suspend fun addPhotosToPending(
+        personId: String,
+        imagePaths: List<String>
+    ) {
+        if (imagePaths.isEmpty()) return
+
+        val items = imagePaths.map { path ->
+            GalleryEntity(
+                personId = personId,
+                imagePath = path,
+                pose = null,
+                lighting = null,
+                quality = 0f
+            )
+        }
+
+        galleryDao.insertAll(items)
+    }
+
+    suspend fun photoCountForPerson(personId: String): Int {
+        return galleryDao.listForPerson(personId).size
+    }
+
+    suspend fun firstPhotoPathForPerson(personId: String): String? {
+        return galleryDao.listForPerson(personId).firstOrNull()?.imagePath
+    }
+
     suspend fun approvePendingWithEmbeddings(
         appContext: Context,
         personId: String,

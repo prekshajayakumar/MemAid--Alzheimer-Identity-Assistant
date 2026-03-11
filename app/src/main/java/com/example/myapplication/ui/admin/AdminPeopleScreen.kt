@@ -18,6 +18,8 @@ import com.example.myapplication.data.entities.PersonEntity
 fun AdminPeopleScreen(
     pending: List<PersonEntity>,
     photoPathByPersonId: Map<String, String>,
+    photoCountByPersonId: Map<String, Int>,
+    onCaptureMorePhotos: (personId: String) -> Unit,
     onApprove: (personId: String, name: String, relation: String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -52,6 +54,8 @@ fun AdminPeopleScreen(
                     PendingPersonCard(
                         person = person,
                         photoPath = photoPathByPersonId[person.personId],
+                        photoCount = photoCountByPersonId[person.personId] ?: 0,
+                        onCaptureMorePhotos = onCaptureMorePhotos,
                         onApprove = onApprove
                     )
                 }
@@ -64,6 +68,8 @@ fun AdminPeopleScreen(
 private fun PendingPersonCard(
     person: PersonEntity,
     photoPath: String?,
+    photoCount: Int,
+    onCaptureMorePhotos: (String) -> Unit,
     onApprove: (String, String, String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
@@ -74,6 +80,8 @@ private fun PendingPersonCard(
             BitmapFactory.decodeFile(path)?.asImageBitmap()
         }
     }
+
+    val minSamples = 3
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
@@ -95,6 +103,31 @@ private fun PendingPersonCard(
                     "No photo preview available.",
                     style = MaterialTheme.typography.bodyMedium
                 )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "Samples captured: $photoCount",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            if (photoCount < minSamples) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Capture at least $minSamples photos for better recognition.",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = { onCaptureMorePhotos(person.personId) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Capture more photos")
             }
 
             Spacer(Modifier.height(12.dp))
@@ -120,10 +153,9 @@ private fun PendingPersonCard(
             Spacer(Modifier.height(12.dp))
 
             Button(
+                enabled = name.isNotBlank() && relation.isNotBlank() && photoCount >= minSamples,
                 onClick = {
-                    if (name.isNotBlank() && relation.isNotBlank()) {
-                        onApprove(person.personId, name.trim(), relation.trim())
-                    }
+                    onApprove(person.personId, name.trim(), relation.trim())
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
