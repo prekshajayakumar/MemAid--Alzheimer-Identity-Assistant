@@ -51,6 +51,7 @@ import com.example.myapplication.util.PostEventSummaryBuilder
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -124,6 +125,7 @@ class MainActivity : ComponentActivity() {
                     val all by routineVm.allRoutines.collectAsState()
                     val currentRoutine by routineVm.currentRoutine.collectAsState()
                     val nextRoutine by routineVm.nextRoutine.collectAsState()
+                    val smsPermission = rememberPermissionState(Manifest.permission.SEND_SMS)
 
                     val db = remember { AppDb.get(applicationContext) }
                     val peopleRepo = remember { PeopleRepository(db) }
@@ -164,10 +166,12 @@ class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(Unit) {
                         locationPermissions.launchMultiplePermissionRequest()
+
+                        if (!smsPermission.status.isGranted) {
+                            smsPermission.launchPermissionRequest()
+                        }
                     }
-
                     val allLocationGranted = locationPermissions.permissions.any { it.status.isGranted }
-
                     LaunchedEffect(allLocationGranted) {
                         val intent = Intent(this@MainActivity, DeviationMonitorService::class.java)
                         if (allLocationGranted) {

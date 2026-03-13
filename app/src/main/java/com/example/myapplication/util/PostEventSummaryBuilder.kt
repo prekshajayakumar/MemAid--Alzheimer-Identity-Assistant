@@ -30,6 +30,13 @@ object PostEventSummaryBuilder {
             lines += "The deviation continued, so extra attention was requested."
         }
 
+        if (events.any {
+                it.eventType == DeviationEventType.DEVIATION_SMS_5MIN ||
+                        it.eventType == DeviationEventType.DEVIATION_SMS_15MIN
+            }) {
+            lines += "A caregiver text update was sent because extra support might be needed."
+        }
+
         if (events.any { it.eventType == DeviationEventType.CAREGIVER_CALL }) {
             lines += "A caregiver call was started to provide support."
         }
