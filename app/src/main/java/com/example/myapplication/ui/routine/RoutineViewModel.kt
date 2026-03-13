@@ -90,6 +90,14 @@ class RoutineViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun updateRoutine(item: RoutineItemEntity) {
+        viewModelScope.launch {
+            repo.upsert(item)
+        }
+    }
+
+    suspend fun getRoutineById(id: String): RoutineItemEntity? = repo.getById(id)
+
     fun toggleEnabled(item: RoutineItemEntity, enabled: Boolean) {
         viewModelScope.launch {
             db.routineDao().setEnabled(item.routineId, enabled)

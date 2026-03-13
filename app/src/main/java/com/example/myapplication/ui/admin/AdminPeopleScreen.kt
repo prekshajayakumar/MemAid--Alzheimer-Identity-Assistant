@@ -17,10 +17,12 @@ import com.example.myapplication.data.entities.PersonEntity
 @Composable
 fun AdminPeopleScreen(
     pending: List<PersonEntity>,
+    activePeople: List<PersonEntity>,
     photoPathByPersonId: Map<String, String>,
     photoCountByPersonId: Map<String, Int>,
     onCaptureMorePhotos: (personId: String) -> Unit,
     onApprove: (personId: String, name: String, relation: String) -> Unit,
+    onMergeIntoExisting: (pendingPersonId: String, existingPersonId: String) -> Unit,
     onReject: (personId: String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -54,10 +56,12 @@ fun AdminPeopleScreen(
                 items(pending) { person ->
                     PendingPersonCard(
                         person = person,
+                        activePeople = activePeople,
                         photoPath = photoPathByPersonId[person.personId],
                         photoCount = photoCountByPersonId[person.personId] ?: 0,
                         onCaptureMorePhotos = onCaptureMorePhotos,
                         onApprove = onApprove,
+                        onMergeIntoExisting = onMergeIntoExisting,
                         onReject = onReject
                     )
                 }
@@ -66,23 +70,33 @@ fun AdminPeopleScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PendingPersonCard(
     person: PersonEntity,
+    activePeople: List<PersonEntity>,
     photoPath: String?,
     photoCount: Int,
     onCaptureMorePhotos: (String) -> Unit,
     onApprove: (String, String, String) -> Unit,
+    onMergeIntoExisting: (String, String) -> Unit,
     onReject: (String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var relation by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    var selectedExistingId by remember { mutableStateOf<String?>(null) }
 
     val imageBitmap = remember(photoPath) {
         photoPath?.let { path ->
             BitmapFactory.decodeFile(path)?.asImageBitmap()
         }
     }
+
+    val selectedExistingName = activePeople
+        .firstOrNull { it.personId == selectedExistingId }
+        ?.name
+        ?: ""
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
@@ -159,7 +173,61 @@ private fun PendingPersonCard(
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Approve")
+                Text("Approve as New Person")
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "Or link this to an existing person",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(8.dp))
+
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded }
+            ) {
+                OutlinedTextField(
+                    value = selectedExistingName,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Existing person") },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    activePeople.forEach { existing ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(existing.name ?: "Unnamed")
+                            },
+                            onClick = {
+                                selectedExistingId = existing.personId
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedButton(
+                enabled = selectedExistingId != null,
+                onClick = {
+                    selectedExistingId?.let {
+                        onMergeIntoExisting(person.personId, it)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Add to Existing Person")
             }
 
             Spacer(Modifier.height(8.dp))

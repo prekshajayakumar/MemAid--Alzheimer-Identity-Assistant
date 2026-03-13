@@ -16,4 +16,7 @@ interface FaceVectorDao {
 
     @Query("DELETE FROM face_vectors WHERE personId = :pid")
     suspend fun deleteForPerson(pid: String)
+
+    @Query("UPDATE face_vectors SET personId = :toPersonId WHERE personId = :fromPersonId")
+    suspend fun moveAllVectors(fromPersonId: String, toPersonId: String)
 }

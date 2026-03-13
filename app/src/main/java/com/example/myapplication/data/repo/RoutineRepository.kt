@@ -11,17 +11,15 @@ class RoutineRepository(
 ) {
     fun observeAll(): Flow<List<RoutineItemEntity>> = dao.observeAll()
 
+    suspend fun getById(id: String): RoutineItemEntity? = dao.getById(id)
+
     suspend fun upsert(item: RoutineItemEntity) = dao.upsert(item)
 
     suspend fun delete(item: RoutineItemEntity) = dao.delete(item)
 
-    /**
-     * Patient view: today's filtered list.
-     * date is LocalDate.now() usually.
-     */
     fun filterForToday(all: List<RoutineItemEntity>, date: LocalDate): List<RoutineItemEntity> {
-        val dayOfWeek = date.dayOfWeek // MON..SUN
-        val dateStr = date.toString()  // "YYYY-MM-DD"
+        val dayOfWeek = date.dayOfWeek
+        val dateStr = date.toString()
 
         return all
             .asSequence()

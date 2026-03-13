@@ -10,6 +10,9 @@ interface RoutineDao {
     @Query("SELECT * FROM routine_items ORDER BY timeMinutes ASC")
     fun observeAll(): Flow<List<RoutineItemEntity>>
 
+    @Query("SELECT * FROM routine_items WHERE routineId = :id LIMIT 1")
+    suspend fun getById(id: String): RoutineItemEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: RoutineItemEntity)
 

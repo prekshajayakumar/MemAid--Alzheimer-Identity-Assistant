@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,8 +16,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.db.AppDb
 import com.example.myapplication.data.entities.DeviationEventEntity
 import com.example.myapplication.data.entities.DeviationEventType
+import com.example.myapplication.data.entities.GalleryEntity
+import com.example.myapplication.data.entities.PersonEntity
 import com.example.myapplication.data.entities.RecognitionLogEntity
 import com.example.myapplication.data.entities.RecognitionOutcome
+import com.example.myapplication.data.entities.RoutineItemEntity
 import com.example.myapplication.data.repo.DeviationEventRepository
 import com.example.myapplication.data.repo.LogsRepository
 import com.example.myapplication.data.repo.PeopleRepository
@@ -27,6 +31,7 @@ import com.example.myapplication.ui.admin.AdminDashboardScreen
 import com.example.myapplication.ui.admin.AdminLibraryScreen
 import com.example.myapplication.ui.admin.AdminLogsScreen
 import com.example.myapplication.ui.admin.AdminPeopleScreen
+import com.example.myapplication.ui.admin.AdminPersonDetailScreen
 import com.example.myapplication.ui.admin.AdminPinScreen
 import com.example.myapplication.ui.admin.AdminSettingsScreen
 import com.example.myapplication.ui.admin.LogsViewModel
@@ -36,6 +41,7 @@ import com.example.myapplication.ui.patient.PostEventSummaryScreen
 import com.example.myapplication.ui.patient.RecognizedPersonScreen
 import com.example.myapplication.ui.patient.RememberSavedScreen
 import com.example.myapplication.ui.patient.UnknownPersonScreen
+import com.example.myapplication.ui.routine.AdminRoutineDetailScreen
 import com.example.myapplication.ui.routine.AdminRoutineScreen
 import com.example.myapplication.ui.routine.RoutineViewModel
 import com.example.myapplication.util.CallCaregiver
@@ -62,7 +68,9 @@ private enum class Screen {
     ADMIN_DASHBOARD,
     ADMIN_PEOPLE,
     ADMIN_LIBRARY,
+    ADMIN_PERSON_DETAIL,
     ADMIN_ROUTINE,
+    ADMIN_ROUTINE_DETAIL,
     ADMIN_SETTINGS,
     ADMIN_LOGS,
     ADMIN_CAPTURE_MORE_PHOTOS,
@@ -134,6 +142,9 @@ class MainActivity : ComponentActivity() {
 
                     var lastCapturedPath by remember { mutableStateOf<String?>(null) }
                     var lastFaceCropPath by remember { mutableStateOf<String?>(null) }
+
+                    var selectedLibraryPersonId by remember { mutableStateOf<String?>(null) }
+                    var selectedRoutineId by remember { mutableStateOf<String?>(null) }
 
                     val scope = rememberCoroutineScope()
                     val snack = remember { SnackbarHostState() }
@@ -446,8 +457,8 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 Screen.ADMIN_PEOPLE -> {
-                                    val pending by peopleRepo.pending()
-                                        .collectAsState(initial = emptyList())
+                                    val pending by peopleRepo.pending().collectAsState(initial = emptyList())
+                                    val activePeople by peopleRepo.active().collectAsState(initial = emptyList())
 
                                     val photoPathByPersonId by produceState<Map<String, String>>(
                                         initialValue = emptyMap(),
@@ -474,6 +485,7 @@ class MainActivity : ComponentActivity() {
 
                                     AdminPeopleScreen(
                                         pending = pending,
+                                        activePeople = activePeople,
                                         photoPathByPersonId = photoPathByPersonId,
                                         photoCountByPersonId = photoCountByPersonId,
                                         onCaptureMorePhotos = { personId ->
@@ -494,6 +506,20 @@ class MainActivity : ComponentActivity() {
                                                     snack.showSnackbar("Person approved.")
                                                 } else {
                                                     snack.showSnackbar("Couldn’t create face vectors. Try clearer photos.")
+                                                }
+                                            }
+                                        },
+                                        onMergeIntoExisting = { pendingId, existingId ->
+                                            scope.launch {
+                                                val merged = peopleRepo.mergePendingIntoExisting(
+                                                    appContext = applicationContext,
+                                                    pendingPersonId = pendingId,
+                                                    existingPersonId = existingId
+                                                )
+                                                if (merged) {
+                                                    snack.showSnackbar("Pending person added to existing person.")
+                                                } else {
+                                                    snack.showSnackbar("Could not link to existing person.")
                                                 }
                                             }
                                         },
@@ -537,6 +563,10 @@ class MainActivity : ComponentActivity() {
                                         people = activePeople,
                                         photoCountByPersonId = photoCountByPersonId,
                                         vectorCountByPersonId = vectorCountByPersonId,
+                                        onOpenPerson = { personId ->
+                                            selectedLibraryPersonId = personId
+                                            screen = Screen.ADMIN_PERSON_DETAIL
+                                        },
                                         onAddMorePhotos = { personId ->
                                             captureTargetPersonId = personId
                                             captureIntoActiveLibrary = true
@@ -544,6 +574,58 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onBack = { screen = Screen.ADMIN_DASHBOARD }
                                     )
+                                }
+
+                                Screen.ADMIN_PERSON_DETAIL -> {
+                                    val personId = selectedLibraryPersonId
+
+                                    if (personId == null) {
+                                        screen = Screen.ADMIN_LIBRARY
+                                    } else {
+                                        var person by remember(personId) { mutableStateOf<PersonEntity?>(null) }
+                                        var gallery by remember(personId) { mutableStateOf<List<GalleryEntity>>(emptyList()) }
+                                        var vectorCount by remember(personId) { mutableStateOf(0) }
+
+                                        LaunchedEffect(personId) {
+                                            person = peopleRepo.getPersonById(personId)
+                                            gallery = peopleRepo.getGalleryForPerson(personId)
+                                            vectorCount = peopleRepo.getVectorCount(personId)
+                                        }
+
+                                        val currentPerson = person
+                                        if (currentPerson == null) {
+                                            Box(Modifier.fillMaxSize()) {
+                                                CircularProgressIndicator()
+                                            }
+                                        } else {
+                                            AdminPersonDetailScreen(
+                                                person = currentPerson,
+                                                gallery = gallery,
+                                                vectorCount = vectorCount,
+                                                onSaveBasics = { name, relation ->
+                                                    scope.launch {
+                                                        val ok = peopleRepo.updatePersonBasics(
+                                                            personId = currentPerson.personId,
+                                                            name = name,
+                                                            relation = relation
+                                                        )
+                                                        if (ok) {
+                                                            snack.showSnackbar("Saved.")
+                                                            person = peopleRepo.getPersonById(currentPerson.personId)
+                                                        } else {
+                                                            snack.showSnackbar("Could not save.")
+                                                        }
+                                                    }
+                                                },
+                                                onAddMorePhotos = {
+                                                    captureTargetPersonId = currentPerson.personId
+                                                    captureIntoActiveLibrary = true
+                                                    screen = Screen.ADMIN_CAPTURE_MORE_PHOTOS
+                                                },
+                                                onBack = { screen = Screen.ADMIN_LIBRARY }
+                                            )
+                                        }
+                                    }
                                 }
 
                                 Screen.ADMIN_CAPTURE_MORE_PHOTOS -> CameraScreen(
@@ -563,7 +645,11 @@ class MainActivity : ComponentActivity() {
                                                     imagePaths = paths
                                                 )
                                                 snack.showSnackbar("Added $added usable sample(s).")
-                                                screen = Screen.ADMIN_LIBRARY
+                                                screen = if (selectedLibraryPersonId == targetId) {
+                                                    Screen.ADMIN_PERSON_DETAIL
+                                                } else {
+                                                    Screen.ADMIN_LIBRARY
+                                                }
                                             } else {
                                                 peopleRepo.addPhotosToPending(targetId, paths)
                                                 snack.showSnackbar("Photo(s) added.")
@@ -572,10 +658,11 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onCancel = {
-                                        screen = if (captureIntoActiveLibrary) {
-                                            Screen.ADMIN_LIBRARY
-                                        } else {
-                                            Screen.ADMIN_PEOPLE
+                                        screen = when {
+                                            captureIntoActiveLibrary && selectedLibraryPersonId == captureTargetPersonId ->
+                                                Screen.ADMIN_PERSON_DETAIL
+                                            captureIntoActiveLibrary -> Screen.ADMIN_LIBRARY
+                                            else -> Screen.ADMIN_PEOPLE
                                         }
                                     }
                                 )
@@ -602,8 +689,52 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onDelete = { item ->
                                             routineVm.delete(item)
+                                        },
+                                        onOpenItem = { item ->
+                                            selectedRoutineId = item.routineId
+                                            screen = Screen.ADMIN_ROUTINE_DETAIL
                                         }
                                     )
+                                }
+
+                                Screen.ADMIN_ROUTINE_DETAIL -> {
+                                    val routineId = selectedRoutineId
+
+                                    if (routineId == null) {
+                                        screen = Screen.ADMIN_ROUTINE
+                                    } else {
+                                        var item by remember(routineId) { mutableStateOf<RoutineItemEntity?>(null) }
+
+                                        LaunchedEffect(routineId, all) {
+                                            item = routineVm.getRoutineById(routineId)
+                                        }
+
+                                        val currentItem = item
+                                        if (currentItem == null) {
+                                            Box(Modifier.fillMaxSize()) {
+                                                CircularProgressIndicator()
+                                            }
+                                        } else {
+                                            AdminRoutineDetailScreen(
+                                                item = currentItem,
+                                                onSave = { updated ->
+                                                    routineVm.updateRoutine(updated)
+                                                    scope.launch {
+                                                        snack.showSnackbar("Routine updated.")
+                                                    }
+                                                    screen = Screen.ADMIN_ROUTINE
+                                                },
+                                                onDelete = { deleting ->
+                                                    routineVm.delete(deleting)
+                                                    scope.launch {
+                                                        snack.showSnackbar("Routine deleted.")
+                                                    }
+                                                    screen = Screen.ADMIN_ROUTINE
+                                                },
+                                                onBack = { screen = Screen.ADMIN_ROUTINE }
+                                            )
+                                        }
+                                    }
                                 }
 
                                 Screen.ADMIN_SETTINGS -> {

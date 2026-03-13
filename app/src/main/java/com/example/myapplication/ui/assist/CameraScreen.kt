@@ -84,14 +84,16 @@ fun CameraScreen(
             )
 
             if (paths.isEmpty()) {
+                isProcessing = false
                 snack.showSnackbar("Couldn’t capture usable photos.")
             } else {
+                // Keep processing true here so the capture button does not come back
+                // while recognition is being processed by the parent screen.
                 onImagesCaptured(paths)
             }
         } catch (e: Exception) {
-            snack.showSnackbar("Capture failed: ${e.message ?: "unknown"}")
-        } finally {
             isProcessing = false
+            snack.showSnackbar("Capture failed: ${e.message ?: "unknown"}")
         }
     }
 
@@ -172,7 +174,7 @@ fun CameraScreen(
                     isProcessing -> {
                         CircularProgressIndicator()
                         Spacer(Modifier.height(8.dp))
-                        Text("Capturing 3 shots…")
+                        Text("Processing…")
                         Spacer(Modifier.height(8.dp))
                     }
 

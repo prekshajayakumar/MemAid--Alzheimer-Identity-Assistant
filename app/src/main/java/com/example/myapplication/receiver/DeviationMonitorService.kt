@@ -13,6 +13,8 @@ import com.example.myapplication.util.DeviationNotificationHelper
 import com.example.myapplication.util.DeviationPrefs
 import com.example.myapplication.util.RoutineContextResolver
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -62,13 +64,8 @@ class DeviationMonitorService : Service() {
                 }
 
                 val expectedLat = active.expectedLatitude
-                if (expectedLat == null) {
-                    delay(60_000)
-                    continue
-                }
-
                 val expectedLon = active.expectedLongitude
-                if (expectedLon == null) {
+                if (expectedLat == null || expectedLon == null) {
                     delay(60_000)
                     continue
                 }
@@ -144,7 +141,21 @@ class DeviationMonitorService : Service() {
         if (!fine && !coarse) return null
 
         val fused = LocationServices.getFusedLocationProviderClient(applicationContext)
-        return fused.lastLocation.await()
+        val tokenSource = CancellationTokenSource()
+
+        return try {
+            val current = fused
+                .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, tokenSource.token)
+                .await()
+
+            current ?: fused.lastLocation.await()
+        } catch (_: Exception) {
+            try {
+                fused.lastLocation.await()
+            } catch (_: Exception) {
+                null
+            }
+        }
     }
 
     override fun onDestroy() {

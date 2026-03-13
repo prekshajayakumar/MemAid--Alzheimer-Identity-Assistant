@@ -15,6 +15,7 @@ fun AdminLibraryScreen(
     people: List<PersonEntity>,
     photoCountByPersonId: Map<String, Int>,
     vectorCountByPersonId: Map<String, Int>,
+    onOpenPerson: (String) -> Unit,
     onAddMorePhotos: (String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -67,6 +68,16 @@ fun AdminLibraryScreen(
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Spacer(Modifier.height(12.dp))
+
+                            Button(
+                                onClick = { onOpenPerson(person.personId) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("View Details")
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
                             OutlinedButton(
                                 onClick = { onAddMorePhotos(person.personId) },
                                 modifier = Modifier.fillMaxWidth()

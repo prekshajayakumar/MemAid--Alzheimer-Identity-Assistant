@@ -5,7 +5,7 @@ import com.example.myapplication.data.entities.GalleryEntity
 
 @Dao
 interface GalleryDao {
-    @Query("SELECT * FROM gallery WHERE personId = :pid")
+    @Query("SELECT * FROM gallery WHERE personId = :pid ORDER BY ts DESC")
     suspend fun listForPerson(pid: String): List<GalleryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -13,4 +13,10 @@ interface GalleryDao {
 
     @Query("SELECT * FROM gallery")
     suspend fun all(): List<GalleryEntity>
+
+    @Query("UPDATE gallery SET personId = :toPersonId WHERE personId = :fromPersonId")
+    suspend fun moveAllPhotos(fromPersonId: String, toPersonId: String)
+
+    @Query("DELETE FROM gallery WHERE personId = :pid")
+    suspend fun deleteForPerson(pid: String)
 }

@@ -27,6 +27,17 @@ class PeopleRepository(
     fun pending(): Flow<List<PersonEntity>> = personDao.observeByStatus(PersonStatus.PENDING)
     fun active(): Flow<List<PersonEntity>> = personDao.observeByStatus(PersonStatus.ACTIVE)
 
+    suspend fun getPersonById(personId: String): PersonEntity? = personDao.getById(personId)
+
+    suspend fun getGalleryForPerson(personId: String): List<GalleryEntity> =
+        galleryDao.listForPerson(personId)
+
+    suspend fun getPhotoCount(personId: String): Int =
+        galleryDao.listForPerson(personId).size
+
+    suspend fun getVectorCount(personId: String): Int =
+        vectorDao.vectorsForPerson(personId).size
+
     suspend fun createPendingFromPhotoPaths(imagePaths: List<String>): String {
         val person = PersonEntity(
             name = null,
@@ -94,6 +105,63 @@ class PeopleRepository(
                 name = name.trim(),
                 relation = relation.trim(),
                 status = PersonStatus.ACTIVE
+            )
+        )
+        return true
+    }
+
+    suspend fun mergePendingIntoExisting(
+        appContext: Context,
+        pendingPersonId: String,
+        existingPersonId: String
+    ): Boolean = withContext(Dispatchers.Default) {
+
+        if (pendingPersonId == existingPersonId) return@withContext false
+
+        val pendingPerson = personDao.getById(pendingPersonId) ?: return@withContext false
+        val existingPerson = personDao.getById(existingPersonId) ?: return@withContext false
+
+        if (pendingPerson.status != PersonStatus.PENDING) return@withContext false
+        if (existingPerson.status != PersonStatus.ACTIVE) return@withContext false
+
+        val pendingPhotos = galleryDao.listForPerson(pendingPersonId)
+        if (pendingPhotos.isEmpty()) return@withContext false
+
+        val movedGallery = pendingPhotos.map { photo ->
+            photo.copy(
+                galleryId = java.util.UUID.randomUUID().toString(),
+                personId = existingPersonId,
+                ts = System.currentTimeMillis()
+            )
+        }
+
+        galleryDao.insertAll(movedGallery)
+
+        val vectors = buildVectorsFromPaths(
+            context = appContext,
+            personId = existingPersonId,
+            imagePaths = pendingPhotos.map { it.imagePath },
+            alreadyFaceCrops = false
+        )
+
+        if (vectors.isNotEmpty()) {
+            vectorDao.insertAll(vectors)
+        }
+
+        personDao.delete(pendingPerson)
+
+        true
+    }
+    suspend fun updatePersonBasics(
+        personId: String,
+        name: String,
+        relation: String
+    ): Boolean {
+        val person = personDao.getById(personId) ?: return false
+        personDao.upsert(
+            person.copy(
+                name = name.trim(),
+                relation = relation.trim()
             )
         )
         return true

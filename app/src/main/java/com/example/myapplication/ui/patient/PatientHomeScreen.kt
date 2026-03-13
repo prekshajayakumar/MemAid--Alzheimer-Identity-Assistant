@@ -42,54 +42,87 @@ fun PatientHomeScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
+
             Text("Today", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
+            if (currentRoutine != null) {
 
-                    when {
-                        currentRoutine != null -> {
-                            Text("Now", style = MaterialTheme.typography.labelLarge)
-                            Spacer(Modifier.height(4.dp))
-                            Text(currentRoutine.label, style = MaterialTheme.typography.headlineSmall)
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+
+                        Text("Now", style = MaterialTheme.typography.labelLarge)
+
+                        Spacer(Modifier.height(4.dp))
+
+                        Text(
+                            currentRoutine.label,
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+
+                        Spacer(Modifier.height(6.dp))
+
+                        Text(
+                            "${formatTime(currentRoutine.timeMinutes)} - ${
+                                formatTime(
+                                    currentRoutine.endTimeMinutes
+                                        ?: (currentRoutine.timeMinutes + 60)
+                                )
+                            }"
+                        )
+
+                        currentRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
                             Spacer(Modifier.height(6.dp))
-                            Text(
-                                "${formatTime(currentRoutine.timeMinutes)} - ${formatTime(currentRoutine.endTimeMinutes ?: (currentRoutine.timeMinutes + 60))}",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            currentRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
-                                Spacer(Modifier.height(6.dp))
-                                Text("Place: $it", style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-
-                        nextRoutine != null -> {
-                            Text("Next", style = MaterialTheme.typography.labelLarge)
-                            Spacer(Modifier.height(4.dp))
-                            Text(nextRoutine.label, style = MaterialTheme.typography.headlineSmall)
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                "${formatTime(nextRoutine.timeMinutes)} - ${formatTime(nextRoutine.endTimeMinutes ?: (nextRoutine.timeMinutes + 60))}",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            nextRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
-                                Spacer(Modifier.height(6.dp))
-                                Text("Place: $it", style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-
-                        else -> {
-                            Text(
-                                "No more activities planned for now.",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
+                            Text("Place: $it")
                         }
                     }
                 }
+
+                Spacer(Modifier.height(12.dp))
             }
 
-            Spacer(Modifier.height(20.dp))
+            if (nextRoutine != null) {
+
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+
+                        Text("Next", style = MaterialTheme.typography.labelLarge)
+
+                        Spacer(Modifier.height(4.dp))
+
+                        Text(
+                            nextRoutine.label,
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+
+                        Spacer(Modifier.height(6.dp))
+
+                        Text(
+                            "${formatTime(nextRoutine.timeMinutes)} - ${
+                                formatTime(
+                                    nextRoutine.endTimeMinutes
+                                        ?: (nextRoutine.timeMinutes + 60)
+                                )
+                            }"
+                        )
+
+                        nextRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
+                            Spacer(Modifier.height(6.dp))
+                            Text("Place: $it")
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+            }
+
+            if (currentRoutine == null && nextRoutine == null) {
+                Text(
+                    "No activities scheduled right now.",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Spacer(Modifier.height(20.dp))
+            }
 
             Button(
                 onClick = onRecognizePerson,
@@ -122,5 +155,6 @@ private fun formatTime(minutes: Int): String {
         else -> v
     }
     val mm = if (m < 10) "0$m" else "$m"
+
     return "$h12:$mm $ampm"
 }
