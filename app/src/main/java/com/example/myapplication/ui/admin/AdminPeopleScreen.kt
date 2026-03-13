@@ -21,6 +21,7 @@ fun AdminPeopleScreen(
     photoCountByPersonId: Map<String, Int>,
     onCaptureMorePhotos: (personId: String) -> Unit,
     onApprove: (personId: String, name: String, relation: String) -> Unit,
+    onReject: (personId: String) -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -56,7 +57,8 @@ fun AdminPeopleScreen(
                         photoPath = photoPathByPersonId[person.personId],
                         photoCount = photoCountByPersonId[person.personId] ?: 0,
                         onCaptureMorePhotos = onCaptureMorePhotos,
-                        onApprove = onApprove
+                        onApprove = onApprove,
+                        onReject = onReject
                     )
                 }
             }
@@ -70,7 +72,8 @@ private fun PendingPersonCard(
     photoPath: String?,
     photoCount: Int,
     onCaptureMorePhotos: (String) -> Unit,
-    onApprove: (String, String, String) -> Unit
+    onApprove: (String, String, String) -> Unit,
+    onReject: (String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var relation by remember { mutableStateOf("") }
@@ -157,6 +160,15 @@ private fun PendingPersonCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Approve")
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = { onReject(person.personId) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Reject / Delete")
             }
         }
     }

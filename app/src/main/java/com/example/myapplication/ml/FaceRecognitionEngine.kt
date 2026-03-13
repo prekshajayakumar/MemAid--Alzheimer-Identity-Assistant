@@ -13,9 +13,9 @@ class FaceRecognitionEngine(context: Context) {
     private val embedder = FaceEmbedder(appContext)
     private val db = AppDb.get(appContext)
 
-    // Slightly more permissive per-shot, because burst aggregation will decide final result.
-    private val THRESHOLD = 0.72f
-    private val MIN_MARGIN = 0.04f
+    // More practical for demo use: higher recall, less strict than before.
+    private val THRESHOLD = 0.68f
+    private val MIN_MARGIN = 0.02f
     private val TOP_K = 2
 
     data class RecognitionResult(
@@ -25,14 +25,18 @@ class FaceRecognitionEngine(context: Context) {
     )
 
     suspend fun recognizeFromPhoto(photoBitmap: Bitmap): RecognitionResult = withContext(Dispatchers.Default) {
-        val detected = FaceCropper.detectSingleUsableFace(photoBitmap)
-            ?: return@withContext RecognitionResult(null, 0f, "No single usable face")
+        val rect = FaceCropper.detectLargestFace(photoBitmap)
+            ?: return@withContext RecognitionResult(null, 0f, "No face found")
 
-        val faceBitmap = FaceCropper.cropSquare(photoBitmap, detected.boundingBox)
+        val faceBitmap = FaceCropper.cropSquare(photoBitmap, rect)
             ?: return@withContext RecognitionResult(null, 0f, "Face crop failed")
 
         val quality = FaceQuality.evaluate(faceBitmap)
-        if (!quality.accepted) {
+        val qualityOkay =
+            quality.brightness in 25f..235f &&
+                    quality.sharpness >= 3.5f
+
+        if (!qualityOkay) {
             return@withContext RecognitionResult(null, 0f, "Face quality too low")
         }
 
@@ -56,7 +60,7 @@ class FaceRecognitionEngine(context: Context) {
             val sorted = scores.sortedDescending()
             val best = sorted.first()
             val avgTop = sorted.take(TOP_K).average().toFloat()
-            val finalScore = (0.75f * best) + (0.25f * avgTop)
+            val finalScore = (0.80f * best) + (0.20f * avgTop)
             personId to finalScore
         }.sortedByDescending { it.second }
 

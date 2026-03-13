@@ -69,6 +69,13 @@ class PeopleRepository(
         galleryDao.insertAll(items)
     }
 
+    suspend fun deletePendingPerson(personId: String): Boolean {
+        val person = personDao.getById(personId) ?: return false
+        if (person.status != PersonStatus.PENDING) return false
+        personDao.delete(person)
+        return true
+    }
+
     suspend fun approvePendingWithEmbeddings(
         appContext: Context,
         personId: String,
@@ -99,7 +106,14 @@ class PeopleRepository(
     ): Int = withContext(Dispatchers.Default) {
         if (imagePaths.isEmpty()) return@withContext 0
 
-        val galleryItems = imagePaths.map { path ->
+        val usable = filterUsablePhotoPaths(
+            context = appContext,
+            imagePaths = imagePaths
+        )
+
+        if (usable.isEmpty()) return@withContext 0
+
+        val galleryItems = usable.map { path ->
             GalleryEntity(
                 personId = personId,
                 imagePath = path,
@@ -113,7 +127,7 @@ class PeopleRepository(
         val vectors = buildVectorsFromPaths(
             context = appContext,
             personId = personId,
-            imagePaths = imagePaths,
+            imagePaths = usable,
             alreadyFaceCrops = false
         )
 
@@ -124,33 +138,36 @@ class PeopleRepository(
         vectors.size
     }
 
-    suspend fun appendConfirmedFaceCrop(
+    suspend fun appendConfirmedFaceCrops(
         appContext: Context,
         personId: String,
-        cropPath: String
-    ): Boolean = withContext(Dispatchers.Default) {
+        cropPaths: List<String>
+    ): Int = withContext(Dispatchers.Default) {
+        if (cropPaths.isEmpty()) return@withContext 0
+
+        val unique = cropPaths.distinct().take(2)
         val vectors = buildVectorsFromPaths(
             context = appContext,
             personId = personId,
-            imagePaths = listOf(cropPath),
+            imagePaths = unique,
             alreadyFaceCrops = true
         )
 
-        if (vectors.isEmpty()) return@withContext false
+        if (vectors.isEmpty()) return@withContext 0
 
-        galleryDao.insertAll(
-            listOf(
-                GalleryEntity(
-                    personId = personId,
-                    imagePath = cropPath,
-                    pose = "auto-confirmed",
-                    lighting = null,
-                    quality = vectors.first().quality
-                )
+        val galleryItems = vectors.indices.map { index ->
+            GalleryEntity(
+                personId = personId,
+                imagePath = unique[index.coerceAtMost(unique.lastIndex)],
+                pose = "auto-confirmed",
+                lighting = null,
+                quality = vectors[index].quality
             )
-        )
+        }
+
+        galleryDao.insertAll(galleryItems)
         vectorDao.insertAll(vectors)
-        true
+        vectors.size
     }
 
     private suspend fun regenerateEmbeddingsFromGallery(
@@ -183,6 +200,25 @@ class PeopleRepository(
         vectors.size
     }
 
+    private suspend fun filterUsablePhotoPaths(
+        context: Context,
+        imagePaths: List<String>
+    ): List<String> = withContext(Dispatchers.Default) {
+        val usable = mutableListOf<String>()
+
+        for (path in imagePaths) {
+            val bmp = ImageBitmapUtils.decodeUprightBitmap(path) ?: continue
+            val rect = FaceCropper.detectLargestFace(bmp) ?: continue
+            val crop = FaceCropper.cropSquare(bmp, rect) ?: continue
+            val q = FaceQuality.evaluate(crop)
+
+            val ok = q.brightness in 25f..235f && q.sharpness >= 3.5f
+            if (ok) usable += path
+        }
+
+        usable
+    }
+
     private suspend fun buildVectorsFromPaths(
         context: Context,
         personId: String,
@@ -204,13 +240,13 @@ class PeopleRepository(
                 val faceBitmap = if (alreadyFaceCrops) {
                     bmp
                 } else {
-                    val detected = FaceCropper.detectSingleUsableFace(bmp)
-                    if (detected == null) {
-                        Log.d("Enrollment", "[$index] skipped: no single usable face")
+                    val rect = FaceCropper.detectLargestFace(bmp)
+                    if (rect == null) {
+                        Log.d("Enrollment", "[$index] skipped: no face")
                         continue
                     }
 
-                    FaceCropper.cropSquare(bmp, detected.boundingBox).also {
+                    FaceCropper.cropSquare(bmp, rect).also {
                         if (it == null) {
                             Log.d("Enrollment", "[$index] skipped: crop failed")
                         }
@@ -218,7 +254,11 @@ class PeopleRepository(
                 }
 
                 val quality = FaceQuality.evaluate(faceBitmap)
-                if (!quality.accepted) {
+                val goodEnough =
+                    quality.brightness in 25f..235f &&
+                            quality.sharpness >= 3.5f
+
+                if (!goodEnough) {
                     Log.d(
                         "Enrollment",
                         "[$index] skipped: quality rejected b=${quality.brightness} c=${quality.contrast} s=${quality.sharpness}"

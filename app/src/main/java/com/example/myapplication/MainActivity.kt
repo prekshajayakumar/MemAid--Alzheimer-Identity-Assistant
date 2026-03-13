@@ -15,8 +15,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.db.AppDb
 import com.example.myapplication.data.entities.DeviationEventEntity
 import com.example.myapplication.data.entities.DeviationEventType
-import com.example.myapplication.data.entities.PersonEntity
+import com.example.myapplication.data.entities.RecognitionLogEntity
+import com.example.myapplication.data.entities.RecognitionOutcome
 import com.example.myapplication.data.repo.DeviationEventRepository
+import com.example.myapplication.data.repo.LogsRepository
 import com.example.myapplication.data.repo.PeopleRepository
 import com.example.myapplication.ml.FaceCropper
 import com.example.myapplication.ml.FaceRecognitionEngine
@@ -73,49 +75,31 @@ private data class BurstShotResult(
     val score: Float
 )
 
-private data class BurstAggregate(
+private data class BestBurstMatch(
     val personId: String,
-    val votes: Int,
     val bestScore: Float,
-    val avgScore: Float,
-    val finalScore: Float
+    val strongCropPaths: List<String>
 )
 
-private fun chooseBurstWinner(results: List<BurstShotResult>): BurstAggregate? {
-    val positives = results.filter { it.personId != null }
-    if (positives.isEmpty()) return null
+private fun chooseBestBurstMatch(results: List<BurstShotResult>): BestBurstMatch? {
+    val recognized = results.filter { it.personId != null }
+    if (recognized.isEmpty()) return null
 
-    val ranked = positives
-        .groupBy { it.personId!! }
-        .map { (personId, shots) ->
-            val votes = shots.size
-            val bestScore = shots.maxOf { it.score }
-            val avgScore = shots.map { it.score }.average().toFloat()
-            val finalScore = (votes * 0.20f) + (bestScore * 0.55f) + (avgScore * 0.25f)
+    val best = recognized.maxByOrNull { it.score } ?: return null
+    val bestPersonId = best.personId ?: return null
 
-            BurstAggregate(
-                personId = personId,
-                votes = votes,
-                bestScore = bestScore,
-                avgScore = avgScore,
-                finalScore = finalScore
-            )
-        }
-        .sortedWith(
-            compareByDescending<BurstAggregate> { it.votes }
-                .thenByDescending { it.finalScore }
-        )
+    val strongCrops = recognized
+        .filter { it.personId == bestPersonId && it.cropPath != null && it.score >= 0.80f }
+        .sortedByDescending { it.score }
+        .mapNotNull { it.cropPath }
+        .distinct()
+        .take(2)
 
-    val best = ranked.firstOrNull() ?: return null
-    val second = ranked.getOrNull(1)
-
-    val clearWinner =
-        best.votes >= 2 || best.bestScore >= 0.84f
-
-    val separated =
-        second == null || (best.finalScore - second.finalScore) >= 0.06f
-
-    return if (clearWinner && separated) best else null
+    return BestBurstMatch(
+        personId = bestPersonId,
+        bestScore = best.score,
+        strongCropPaths = strongCrops
+    )
 }
 
 class MainActivity : ComponentActivity() {
@@ -135,6 +119,7 @@ class MainActivity : ComponentActivity() {
 
                     val db = remember { AppDb.get(applicationContext) }
                     val peopleRepo = remember { PeopleRepository(db) }
+                    val logsRepo = remember { LogsRepository(db.recognitionLogDao()) }
                     val deviationEventRepo = remember { DeviationEventRepository(db.deviationEventDao()) }
 
                     val recogEngine = remember { FaceRecognitionEngine(applicationContext) }
@@ -226,6 +211,24 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    fun logRecognition(
+                        outcome: RecognitionOutcome,
+                        imagePath: String?,
+                        bestScore: Float?,
+                        personId: String?
+                    ) {
+                        scope.launch {
+                            logsRepo.insert(
+                                RecognitionLogEntity(
+                                    outcome = outcome,
+                                    bestScore = bestScore,
+                                    personId = personId,
+                                    imagePath = imagePath
+                                )
+                            )
+                        }
+                    }
+
                     LaunchedEffect(screen) {
                         if (screen == Screen.PATIENT_HOME) {
                             val since = System.currentTimeMillis() - 12 * 60 * 60 * 1000L
@@ -289,9 +292,15 @@ class MainActivity : ComponentActivity() {
 
                                             lastFaceCropPath = bestCropOverall
 
-                                            val winner = chooseBurstWinner(shotResults)
+                                            val winner = chooseBestBurstMatch(shotResults)
 
                                             if (winner == null) {
+                                                logRecognition(
+                                                    outcome = RecognitionOutcome.UNKNOWN,
+                                                    imagePath = lastFaceCropPath ?: lastCapturedPath,
+                                                    bestScore = shotResults.maxOfOrNull { it.score },
+                                                    personId = null
+                                                )
                                                 withContext(Dispatchers.Main) {
                                                     screen = Screen.UNKNOWN
                                                 }
@@ -300,27 +309,39 @@ class MainActivity : ComponentActivity() {
 
                                             val person = db.personDao().getById(winner.personId)
                                             if (person == null || person.name.isNullOrBlank()) {
+                                                logRecognition(
+                                                    outcome = RecognitionOutcome.UNKNOWN,
+                                                    imagePath = lastFaceCropPath ?: lastCapturedPath,
+                                                    bestScore = winner.bestScore,
+                                                    personId = null
+                                                )
                                                 withContext(Dispatchers.Main) {
                                                     screen = Screen.UNKNOWN
                                                 }
                                                 return@launch
                                             }
 
-                                            val bestWinningShot = shotResults
-                                                .filter { it.personId == winner.personId && it.cropPath != null }
-                                                .maxByOrNull { it.score }
-
-                                            if (bestWinningShot != null && bestWinningShot.score >= 0.84f) {
-                                                peopleRepo.appendConfirmedFaceCrop(
+                                            if (winner.strongCropPaths.isNotEmpty()) {
+                                                peopleRepo.appendConfirmedFaceCrops(
                                                     appContext = applicationContext,
                                                     personId = winner.personId,
-                                                    cropPath = bestWinningShot.cropPath!!
+                                                    cropPaths = winner.strongCropPaths
                                                 )
                                             }
-                                            val safePerson = person
+
+                                            logRecognition(
+                                                outcome = RecognitionOutcome.RECOGNIZED,
+                                                imagePath = winner.strongCropPaths.firstOrNull() ?: lastFaceCropPath ?: lastCapturedPath,
+                                                bestScore = winner.bestScore,
+                                                personId = winner.personId
+                                            )
+
+                                            val safeName = person.name ?: "Unknown"
+                                            val safeRelation = person.relation
+
                                             withContext(Dispatchers.Main) {
-                                                recognizedName = safePerson.name
-                                                recognizedRelation = safePerson.relation
+                                                recognizedName = safeName
+                                                recognizedRelation = safeRelation
                                                 screen = Screen.RECOGNIZED
                                             }
                                         }
@@ -357,6 +378,12 @@ class MainActivity : ComponentActivity() {
                                                     eventType = DeviationEventType.UNKNOWN_PERSON_SAVED,
                                                     details = "Unknown person saved for caregiver review"
                                                 )
+                                            )
+                                            logRecognition(
+                                                outcome = RecognitionOutcome.UNKNOWN,
+                                                imagePath = path,
+                                                bestScore = null,
+                                                personId = null
                                             )
                                             lastCapturedPath = null
                                             lastFaceCropPath = null
@@ -463,8 +490,20 @@ class MainActivity : ComponentActivity() {
                                                     relation = relation
                                                 )
 
-                                                if (!approved) {
-                                                    snack.showSnackbar("Couldn’t create face vectors. Try a clearer single-face photo.")
+                                                if (approved) {
+                                                    snack.showSnackbar("Person approved.")
+                                                } else {
+                                                    snack.showSnackbar("Couldn’t create face vectors. Try clearer photos.")
+                                                }
+                                            }
+                                        },
+                                        onReject = { personId ->
+                                            scope.launch {
+                                                val deleted = peopleRepo.deletePendingPerson(personId)
+                                                if (deleted) {
+                                                    snack.showSnackbar("Pending person removed.")
+                                                } else {
+                                                    snack.showSnackbar("Could not remove person.")
                                                 }
                                             }
                                         },

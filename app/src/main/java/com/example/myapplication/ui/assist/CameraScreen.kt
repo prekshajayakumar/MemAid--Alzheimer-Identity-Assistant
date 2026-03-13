@@ -42,9 +42,56 @@ fun CameraScreen(
 
     val camPermission = rememberPermissionState(android.Manifest.permission.CAMERA)
 
+    var isProcessing by remember { mutableStateOf(false) }
+    var cameraReady by remember { mutableStateOf(false) }
+
+    val controller = remember {
+        LifecycleCameraController(context).apply {
+            setEnabledUseCases(LifecycleCameraController.IMAGE_CAPTURE)
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (!camPermission.status.isGranted) {
             camPermission.launchPermissionRequest()
+        }
+    }
+
+    LaunchedEffect(camPermission.status.isGranted, lifecycleOwner) {
+        if (camPermission.status.isGranted) {
+            try {
+                controller.bindToLifecycle(lifecycleOwner)
+                delay(500)
+                cameraReady = true
+            } catch (e: Exception) {
+                cameraReady = false
+                snack.showSnackbar("Camera setup failed: ${e.message ?: "unknown"}")
+            }
+        } else {
+            cameraReady = false
+        }
+    }
+
+    suspend fun doBurstCapture() {
+        if (isProcessing || !cameraReady) return
+
+        isProcessing = true
+        try {
+            val paths = captureBurstToAppPictures(
+                context = context,
+                controller = controller,
+                burstCount = burstCount
+            )
+
+            if (paths.isEmpty()) {
+                snack.showSnackbar("Couldn’t capture usable photos.")
+            } else {
+                onImagesCaptured(paths)
+            }
+        } catch (e: Exception) {
+            snack.showSnackbar("Capture failed: ${e.message ?: "unknown"}")
+        } finally {
+            isProcessing = false
         }
     }
 
@@ -86,18 +133,6 @@ fun CameraScreen(
         return
     }
 
-    var isProcessing by remember { mutableStateOf(false) }
-
-    val controller = remember {
-        LifecycleCameraController(context).apply {
-            setEnabledUseCases(LifecycleCameraController.IMAGE_CAPTURE)
-        }
-    }
-
-    LaunchedEffect(lifecycleOwner) {
-        controller.bindToLifecycle(lifecycleOwner)
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -121,7 +156,9 @@ fun CameraScreen(
                     .weight(1f)
                     .fillMaxWidth(),
                 factory = { ctx ->
-                    PreviewView(ctx).apply { this.controller = controller }
+                    PreviewView(ctx).apply {
+                        this.controller = controller
+                    }
                 }
             )
 
@@ -131,35 +168,41 @@ fun CameraScreen(
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (isProcessing) {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.height(8.dp))
-                    Text("Capturing $burstCount shots…")
-                    Spacer(Modifier.height(8.dp))
+                when {
+                    isProcessing -> {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(8.dp))
+                        Text("Capturing 3 shots…")
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    !cameraReady -> {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(8.dp))
+                        Text("Preparing camera…")
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    else -> {
+                        Text("Tap capture once. The app will take multiple shots automatically.")
+                        Spacer(Modifier.height(12.dp))
+                    }
                 }
 
                 Button(
-                    enabled = !isProcessing,
+                    enabled = !isProcessing && cameraReady,
                     onClick = {
-                        scope.launch {
-                            isProcessing = true
-                            val paths = captureBurstToAppPictures(
-                                context = context,
-                                controller = controller,
-                                burstCount = burstCount
-                            )
-                            isProcessing = false
-
-                            if (paths.isEmpty()) {
-                                snack.showSnackbar("Couldn’t capture usable photos.")
-                            } else {
-                                onImagesCaptured(paths)
-                            }
-                        }
+                        scope.launch { doBurstCapture() }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (isProcessing) "Please wait…" else "Capture ($burstCount shots)")
+                    Text(
+                        when {
+                            isProcessing -> "Please wait…"
+                            !cameraReady -> "Preparing camera…"
+                            else -> "Capture"
+                        }
+                    )
                 }
             }
         }
@@ -176,7 +219,7 @@ private suspend fun captureBurstToAppPictures(
     repeat(burstCount) {
         val path = captureSingleToAppPictures(context, controller)
         if (path != null) saved += path
-        delay(300)
+        delay(220)
     }
 
     return saved
@@ -199,17 +242,21 @@ private suspend fun captureSingleToAppPictures(
 
     val output = ImageCapture.OutputFileOptions.Builder(file).build()
 
-    controller.takePicture(
-        output,
-        ContextCompat.getMainExecutor(context),
-        object : ImageCapture.OnImageSavedCallback {
-            override fun onImageSaved(result: ImageCapture.OutputFileResults) {
-                cont.resume(Uri.fromFile(file).path)
-            }
+    try {
+        controller.takePicture(
+            output,
+            ContextCompat.getMainExecutor(context),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(result: ImageCapture.OutputFileResults) {
+                    cont.resume(Uri.fromFile(file).path)
+                }
 
-            override fun onError(exception: ImageCaptureException) {
-                cont.resume(null)
+                override fun onError(exception: ImageCaptureException) {
+                    cont.resume(null)
+                }
             }
-        }
-    )
+        )
+    } catch (_: Exception) {
+        cont.resume(null)
+    }
 }
