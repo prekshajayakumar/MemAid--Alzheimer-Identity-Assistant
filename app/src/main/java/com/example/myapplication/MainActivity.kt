@@ -9,7 +9,12 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -46,6 +51,7 @@ import com.example.myapplication.ui.routine.AdminRoutineScreen
 import com.example.myapplication.ui.routine.RoutineViewModel
 import com.example.myapplication.util.CallCaregiver
 import com.example.myapplication.util.CaregiverPrefs
+import com.example.myapplication.util.DailySummaryBuilder
 import com.example.myapplication.util.ImageBitmapUtils
 import com.example.myapplication.util.PostEventSummaryBuilder
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -57,6 +63,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import kotlinx.coroutines.flow.first
 
 private enum class Screen {
     PATIENT_HOME,
@@ -65,6 +72,7 @@ private enum class Screen {
     REMEMBER_SAVED,
     RECOGNIZED,
     POST_EVENT_SUMMARY,
+    TODAY_SUMMARY,
     ADMIN_PIN,
     ADMIN_DASHBOARD,
     ADMIN_PEOPLE,
@@ -171,7 +179,9 @@ class MainActivity : ComponentActivity() {
                             smsPermission.launchPermissionRequest()
                         }
                     }
+
                     val allLocationGranted = locationPermissions.permissions.any { it.status.isGranted }
+
                     LaunchedEffect(allLocationGranted) {
                         val intent = Intent(this@MainActivity, DeviationMonitorService::class.java)
                         if (allLocationGranted) {
@@ -272,8 +282,41 @@ class MainActivity : ComponentActivity() {
                                         callCaregiver()
                                         screen = Screen.PATIENT_HOME
                                     },
+                                    onTodaySummary = {
+                                        screen = Screen.TODAY_SUMMARY
+                                    },
                                     onOpenAdminForNow = { screen = Screen.ADMIN_PIN }
                                 )
+
+                                Screen.TODAY_SUMMARY -> {
+
+                                    var summary by remember { mutableStateOf("Loading...") }
+
+                                    LaunchedEffect(Unit) {
+
+                                        val since = System.currentTimeMillis() - (24 * 60 * 60 * 1000L)
+
+                                        val events =
+                                            deviationEventRepo.recentUnresolvedSince(since)
+
+                                        val recognitionLogs =
+                                            db.recognitionLogDao()
+                                                .observeLatest(limit = 200)
+                                                .first()
+                                        val routinesToday = all
+
+                                        summary = DailySummaryBuilder.build(
+                                            routines = routinesToday,
+                                            recognitionLogs = recognitionLogs ?: emptyList(),
+                                            events = events
+                                        )
+                                    }
+
+                                    PostEventSummaryScreen(
+                                        summaryText = summary,
+                                        onDone = { screen = Screen.PATIENT_HOME }
+                                    )
+                                }
 
                                 Screen.CAMERA -> CameraScreen(
                                     burstCount = 3,

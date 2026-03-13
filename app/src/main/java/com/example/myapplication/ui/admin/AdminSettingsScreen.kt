@@ -150,4 +150,22 @@ fun AdminSettingsScreen(onBack: () -> Unit) {
             }
         }
     }
+    val context = LocalContext.current
+    var kiosk by remember { mutableStateOf(CaregiverPrefs.isKioskEnabled(context)) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+
+        Text("Keep app always open")
+
+        Switch(
+            checked = kiosk,
+            onCheckedChange = {
+                kiosk = it
+                CaregiverPrefs.setKioskEnabled(context, it)
+            }
+        )
+    }
 }

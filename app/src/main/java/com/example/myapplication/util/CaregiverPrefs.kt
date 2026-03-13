@@ -5,9 +5,12 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
 object CaregiverPrefs {
+
     private const val FILE = "caregiver_secure_prefs"
     private const val KEY_PHONE = "caregiver_phone"
     private const val KEY_PIN = "admin_pin"
+    private const val KEY_KIOSK = "kiosk_mode"
+
     private const val DEFAULT_PIN = "1234"
 
     private fun prefs(context: Context) =
@@ -34,4 +37,11 @@ object CaregiverPrefs {
     fun setPin(context: Context, pin: String) {
         prefs(context).edit().putString(KEY_PIN, pin).apply()
     }
+
+    fun setKioskEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_KIOSK, enabled).apply()
+    }
+
+    fun isKioskEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_KIOSK, false)
 }

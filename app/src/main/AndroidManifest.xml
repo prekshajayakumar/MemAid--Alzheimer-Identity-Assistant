@@ -46,5 +46,12 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".receiver.KioskModeReceiver"
+            android:exported="false">
+        <intent-filter>
+            <action android:name="android.intent.action.CLOSE_SYSTEM_DIALOGS"/>
+        </intent-filter>
+        </receiver>
     </application>
 </manifest>

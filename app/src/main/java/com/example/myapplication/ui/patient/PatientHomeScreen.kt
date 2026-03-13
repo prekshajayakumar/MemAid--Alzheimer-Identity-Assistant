@@ -16,6 +16,7 @@ fun PatientHomeScreen(
     nextRoutine: RoutineItemEntity?,
     onRecognizePerson: () -> Unit,
     onCallCaregiver: () -> Unit,
+    onTodaySummary: () -> Unit,
     onOpenAdminForNow: () -> Unit
 ) {
     Scaffold(
@@ -141,9 +142,19 @@ fun PatientHomeScreen(
             ) {
                 Text("Call Caregiver")
             }
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = onTodaySummary,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("What have I done today?")
+            }
         }
+
     }
 }
+
 
 private fun formatTime(minutes: Int): String {
     val h24 = (minutes / 60) % 24
