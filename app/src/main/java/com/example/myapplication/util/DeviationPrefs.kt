@@ -8,6 +8,7 @@ object DeviationPrefs {
     private const val KEY_START_MS = "start_ms"
     private const val KEY_LAST_ESCALATION_MS = "last_escalation_ms"
     private const val KEY_LAST_LEVEL = "last_level"
+    private const val KEY_LAST_SMS_STAGE = "last_sms_stage"
 
     fun saveDeviationStart(context: Context, routineId: String, startMs: Long) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -40,6 +41,17 @@ object DeviationPrefs {
     fun getLastEscalationMs(context: Context): Long =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .getLong(KEY_LAST_ESCALATION_MS, 0L)
+
+    fun saveLastSmsStage(context: Context, stage: Int) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_LAST_SMS_STAGE, stage)
+            .apply()
+    }
+
+    fun getLastSmsStage(context: Context): Int =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getInt(KEY_LAST_SMS_STAGE, 0)
 
     fun clear(context: Context) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)

@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
+import java.util.Locale
 
 class DeviationMonitorService : Service() {
 
@@ -92,7 +93,11 @@ class DeviationMonitorService : Service() {
                 if (distanceMeters <= radius) {
                     DeviationPrefs.clear(applicationContext)
                 } else {
-                    handleDeviation(active, eventRepo)
+                    handleDeviation(
+                        item = active,
+                        currentLocation = currentLocation,
+                        eventRepo = eventRepo
+                    )
                 }
             } catch (_: Exception) {
             }
@@ -103,6 +108,7 @@ class DeviationMonitorService : Service() {
 
     private suspend fun handleDeviation(
         item: RoutineItemEntity,
+        currentLocation: Location,
         eventRepo: DeviationEventRepository
     ) {
         val now = System.currentTimeMillis()
@@ -113,10 +119,12 @@ class DeviationMonitorService : Service() {
             startMs = now
             DeviationPrefs.saveDeviationStart(applicationContext, item.routineId, now)
             DeviationPrefs.saveEscalation(applicationContext, 0, 0L)
+            DeviationPrefs.saveLastSmsStage(applicationContext, 0)
         }
 
         val elapsedMinutes = (now - startMs) / 60_000
         val lastLevel = DeviationPrefs.getLastLevel(applicationContext)
+        val lastSmsStage = DeviationPrefs.getLastSmsStage(applicationContext)
 
         if (elapsedMinutes >= 2 && lastLevel < 1) {
             DeviationNotificationHelper.notifyPatientPrompt(applicationContext, item.label)
@@ -129,12 +137,10 @@ class DeviationMonitorService : Service() {
                 )
             )
             DeviationPrefs.saveEscalation(applicationContext, 1, now)
-            return
         }
 
         if (elapsedMinutes >= 5 && lastLevel < 2) {
             DeviationNotificationHelper.notifyEscalation(applicationContext, item.label, elapsedMinutes)
-
             eventRepo.insert(
                 DeviationEventEntity(
                     routineId = item.routineId,
@@ -143,57 +149,79 @@ class DeviationMonitorService : Service() {
                     details = "Deviation continued for 5 minutes."
                 )
             )
+            DeviationPrefs.saveEscalation(applicationContext, 2, now)
+        }
 
+        val smsStage = smsStageForElapsed(elapsedMinutes)
+        if (smsStage > lastSmsStage) {
             sendCaregiverSms(
                 item = item,
                 elapsedMinutes = elapsedMinutes,
-                isRepeat = false,
+                currentLocation = currentLocation,
+                stage = smsStage,
                 eventRepo = eventRepo
             )
-
-            DeviationPrefs.saveEscalation(applicationContext, 2, now)
-            return
+            DeviationPrefs.saveLastSmsStage(applicationContext, smsStage)
         }
 
         if (elapsedMinutes >= 15 && lastLevel < 3) {
             DeviationNotificationHelper.notifyRepeatEscalation(applicationContext, item.label, elapsedMinutes)
-
             eventRepo.insert(
                 DeviationEventEntity(
                     routineId = item.routineId,
                     routineLabel = item.label,
                     eventType = DeviationEventType.DEVIATION_REPEAT_ESCALATION,
-                    details = "Deviation continued for 15 minutes."
+                    details = "Deviation continued for 15 minutes or more."
                 )
             )
-
-            sendCaregiverSms(
-                item = item,
-                elapsedMinutes = elapsedMinutes,
-                isRepeat = true,
-                eventRepo = eventRepo
-            )
-
             DeviationPrefs.saveEscalation(applicationContext, 3, now)
+        }
+    }
+
+    private fun smsStageForElapsed(elapsedMinutes: Long): Int {
+        return when {
+            elapsedMinutes >= 30 -> 4 + ((elapsedMinutes - 30) / 15).toInt()
+            elapsedMinutes >= 20 -> 3
+            elapsedMinutes >= 15 -> 2
+            elapsedMinutes >= 5 -> 1
+            else -> 0
+        }
+    }
+
+    private fun eventTypeForSmsStage(stage: Int): DeviationEventType {
+        return when (stage) {
+            1 -> DeviationEventType.DEVIATION_SMS_5MIN
+            2 -> DeviationEventType.DEVIATION_SMS_15MIN
+            3 -> DeviationEventType.DEVIATION_SMS_20MIN
+            4 -> DeviationEventType.DEVIATION_SMS_30MIN
+            else -> DeviationEventType.DEVIATION_SMS_REPEAT
         }
     }
 
     private suspend fun sendCaregiverSms(
         item: RoutineItemEntity,
         elapsedMinutes: Long,
-        isRepeat: Boolean,
+        currentLocation: Location,
+        stage: Int,
         eventRepo: DeviationEventRepository
     ) {
         val caregiverPhone = CaregiverPrefs.getPhone(applicationContext)
         if (caregiverPhone.isNullOrBlank()) return
 
         val place = item.expectedLocationLabel?.takeIf { it.isNotBlank() } ?: "the expected place"
-        val window = "${formatTime(item.timeMinutes)} to ${formatTime(item.endTimeMinutes ?: (item.timeMinutes + 60))}"
+        val window =
+            "${formatTime(item.timeMinutes)} to ${formatTime(item.endTimeMinutes ?: (item.timeMinutes + 60))}"
 
-        val message = if (!isRepeat) {
-            "MemAid alert: The patient was scheduled to be at $place from $window for '${item.label}', but they are not at the expected location. This has continued for $elapsedMinutes minutes. Please check on them."
-        } else {
-            "MemAid alert: The patient is still not at $place for scheduled activity '${item.label}' ($window). The deviation has now continued for $elapsedMinutes minutes. Please check on them urgently."
+        val lat = String.format(Locale.US, "%.6f", currentLocation.latitude)
+        val lon = String.format(Locale.US, "%.6f", currentLocation.longitude)
+        val mapsLink = "https://maps.google.com/?q=$lat,$lon"
+
+        val message = when (stage) {
+            1 -> "MemAid alert: The patient was scheduled to be at $place from $window for '${item.label}', but they are not at the expected location. This has continued for $elapsedMinutes minutes. Current location: $mapsLink"
+            2 -> "MemAid alert: The patient is still not at $place for scheduled activity '${item.label}' ($window). The deviation has now continued for $elapsedMinutes minutes. Current location: $mapsLink"
+            3 -> "MemAid alert: The patient remains away from $place for '${item.label}' ($window). Deviation has continued for $elapsedMinutes minutes. Current location: $mapsLink"
+            4 -> "MemAid urgent alert: The patient is still away from $place for '${item.label}' ($window). Deviation has continued for $elapsedMinutes minutes. Current location: $mapsLink"
+            else -> "MemAid urgent alert: The patient remains away from $place for '${item.label}' ($window). Deviation has continued for $elapsedMinutes minutes. Current location: $mapsLink"
         }
 
         val sent = SmsHelper.sendText(
@@ -207,11 +235,7 @@ class DeviationMonitorService : Service() {
                 DeviationEventEntity(
                     routineId = item.routineId,
                     routineLabel = item.label,
-                    eventType = if (isRepeat) {
-                        DeviationEventType.DEVIATION_SMS_15MIN
-                    } else {
-                        DeviationEventType.DEVIATION_SMS_5MIN
-                    },
+                    eventType = eventTypeForSmsStage(stage),
                     details = message
                 )
             )

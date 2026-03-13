@@ -32,9 +32,12 @@ object PostEventSummaryBuilder {
 
         if (events.any {
                 it.eventType == DeviationEventType.DEVIATION_SMS_5MIN ||
-                        it.eventType == DeviationEventType.DEVIATION_SMS_15MIN
+                        it.eventType == DeviationEventType.DEVIATION_SMS_15MIN ||
+                        it.eventType == DeviationEventType.DEVIATION_SMS_20MIN ||
+                        it.eventType == DeviationEventType.DEVIATION_SMS_30MIN ||
+                        it.eventType == DeviationEventType.DEVIATION_SMS_REPEAT
             }) {
-            lines += "A caregiver text update was sent because extra support might be needed."
+            lines += "A caregiver text update with location details was sent for extra support."
         }
 
         if (events.any { it.eventType == DeviationEventType.CAREGIVER_CALL }) {
