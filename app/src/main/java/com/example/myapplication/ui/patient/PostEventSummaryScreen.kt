@@ -1,13 +1,12 @@
 package com.example.myapplication.ui.patient
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -15,26 +14,47 @@ fun PostEventSummaryScreen(
     summaryText: String,
     onDone: () -> Unit
 ) {
-    LaunchedEffect(Unit) {
-        delay(8000)
-        onDone()
-    }
-
     Scaffold(
-        topBar = { TopAppBar(title = { Text("MemAid") }) }
+        topBar = {
+            TopAppBar(
+                title = { Text("MemAid Summary") }
+            )
+        }
     ) { padding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(20.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(16.dp)
         ) {
-            Text("Here is a short summary.", style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = "Here is your summary",
+                style = MaterialTheme.typography.headlineSmall
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = summaryText,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
-            Text(summaryText, style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.height(24.dp))
+
             Button(
                 onClick = onDone,
                 modifier = Modifier.fillMaxWidth()

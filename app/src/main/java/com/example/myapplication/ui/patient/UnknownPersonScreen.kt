@@ -1,12 +1,14 @@
 package com.example.myapplication.ui.patient
 
+import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -14,8 +16,28 @@ fun UnknownPersonScreen(
     onHelpMeRemember: () -> Unit,
     onCallCaregiver: () -> Unit
 ) {
+    val context = LocalContext.current
 
-    var interacted by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        var localTts: TextToSpeech? = null
+
+        localTts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                localTts?.language = Locale.getDefault()
+                localTts?.speak(
+                    "I do not recognize this person.",
+                    TextToSpeech.QUEUE_FLUSH,
+                    null,
+                    "unknown_person"
+                )
+            }
+        }
+
+        onDispose {
+            localTts?.stop()
+            localTts?.shutdown()
+        }
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("MemAid") }) }
@@ -26,7 +48,6 @@ fun UnknownPersonScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp),
-
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -46,10 +67,7 @@ fun UnknownPersonScreen(
             Spacer(Modifier.height(24.dp))
 
             Button(
-                onClick = {
-                    interacted = true
-                    onHelpMeRemember()
-                },
+                onClick = onHelpMeRemember,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
@@ -60,10 +78,7 @@ fun UnknownPersonScreen(
             Spacer(Modifier.height(12.dp))
 
             OutlinedButton(
-                onClick = {
-                    interacted = true
-                    onCallCaregiver()
-                },
+                onClick = onCallCaregiver,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Call caregiver")

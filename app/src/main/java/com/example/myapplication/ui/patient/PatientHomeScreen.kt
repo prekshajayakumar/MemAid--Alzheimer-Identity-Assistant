@@ -43,87 +43,62 @@ fun PatientHomeScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
-
             Text("Today", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
 
-            if (currentRoutine != null) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
 
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-
-                        Text("Now", style = MaterialTheme.typography.labelLarge)
-
-                        Spacer(Modifier.height(4.dp))
-
-                        Text(
-                            currentRoutine.label,
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-
-                        Spacer(Modifier.height(6.dp))
-
-                        Text(
-                            "${formatTime(currentRoutine.timeMinutes)} - ${
-                                formatTime(
-                                    currentRoutine.endTimeMinutes
-                                        ?: (currentRoutine.timeMinutes + 60)
-                                )
-                            }"
-                        )
-
-                        currentRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
+                    when {
+                        currentRoutine != null -> {
+                            Text("Now", style = MaterialTheme.typography.labelLarge)
+                            Spacer(Modifier.height(4.dp))
+                            Text(currentRoutine.label, style = MaterialTheme.typography.headlineSmall)
                             Spacer(Modifier.height(6.dp))
-                            Text("Place: $it")
+                            Text(
+                                "${formatTime(currentRoutine.timeMinutes)} - ${
+                                    formatTime(
+                                        currentRoutine.endTimeMinutes ?: (currentRoutine.timeMinutes + 60)
+                                    )
+                                }",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            currentRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
+                                Spacer(Modifier.height(6.dp))
+                                Text("Place: $it", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+
+                        nextRoutine != null -> {
+                            Text("Next", style = MaterialTheme.typography.labelLarge)
+                            Spacer(Modifier.height(4.dp))
+                            Text(nextRoutine.label, style = MaterialTheme.typography.headlineSmall)
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "${formatTime(nextRoutine.timeMinutes)} - ${
+                                    formatTime(
+                                        nextRoutine.endTimeMinutes ?: (nextRoutine.timeMinutes + 60)
+                                    )
+                                }",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            nextRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
+                                Spacer(Modifier.height(6.dp))
+                                Text("Place: $it", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+
+                        else -> {
+                            Text(
+                                "No activities scheduled right now.",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
                         }
                     }
                 }
-
-                Spacer(Modifier.height(12.dp))
             }
 
-            if (nextRoutine != null) {
-
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-
-                        Text("Next", style = MaterialTheme.typography.labelLarge)
-
-                        Spacer(Modifier.height(4.dp))
-
-                        Text(
-                            nextRoutine.label,
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-
-                        Spacer(Modifier.height(6.dp))
-
-                        Text(
-                            "${formatTime(nextRoutine.timeMinutes)} - ${
-                                formatTime(
-                                    nextRoutine.endTimeMinutes
-                                        ?: (nextRoutine.timeMinutes + 60)
-                                )
-                            }"
-                        )
-
-                        nextRoutine.expectedLocationLabel?.takeIf { it.isNotBlank() }?.let {
-                            Spacer(Modifier.height(6.dp))
-                            Text("Place: $it")
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(20.dp))
-            }
-
-            if (currentRoutine == null && nextRoutine == null) {
-                Text(
-                    "No activities scheduled right now.",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(Modifier.height(20.dp))
-            }
+            Spacer(Modifier.height(20.dp))
 
             Button(
                 onClick = onRecognizePerson,
@@ -137,24 +112,23 @@ fun PatientHomeScreen(
             Spacer(Modifier.height(12.dp))
 
             OutlinedButton(
-                onClick = onCallCaregiver,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Call Caregiver")
-            }
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedButton(
                 onClick = onTodaySummary,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("What have I done today?")
             }
-        }
 
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = onCallCaregiver,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Call Caregiver")
+            }
+        }
     }
 }
-
 
 private fun formatTime(minutes: Int): String {
     val h24 = (minutes / 60) % 24

@@ -11,18 +11,17 @@ import com.example.myapplication.util.CaregiverPrefs
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminSettingsScreen(onBack: () -> Unit) {
-
     val ctx = LocalContext.current
 
     var phone by remember {
         mutableStateOf(CaregiverPrefs.getPhone(ctx) ?: "")
     }
-
     var phoneMsg by remember { mutableStateOf<String?>(null) }
 
     var newPin by remember { mutableStateOf("") }
-
     var pinMsg by remember { mutableStateOf<String?>(null) }
+
+    var kiosk by remember { mutableStateOf(CaregiverPrefs.isKioskEnabled(ctx)) }
 
     Scaffold(
         topBar = {
@@ -54,11 +53,7 @@ fun AdminSettingsScreen(onBack: () -> Unit) {
             OutlinedTextField(
                 value = phone,
                 onValueChange = {
-
-                    phone = it
-                        .filter { c -> c.isDigit() || c == '+' }
-                        .take(13)
-
+                    phone = it.filter { c -> c.isDigit() || c == '+' }.take(13)
                     phoneMsg = null
                 },
                 label = { Text("Phone (+91XXXXXXXXXX)") },
@@ -79,9 +74,7 @@ fun AdminSettingsScreen(onBack: () -> Unit) {
             }
 
             if (phoneMsg != null) {
-
                 Spacer(Modifier.height(8.dp))
-
                 Text(
                     phoneMsg!!,
                     color = MaterialTheme.colorScheme.primary
@@ -89,9 +82,7 @@ fun AdminSettingsScreen(onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(24.dp))
-
             HorizontalDivider()
-
             Spacer(Modifier.height(16.dp))
 
             Text(
@@ -104,11 +95,7 @@ fun AdminSettingsScreen(onBack: () -> Unit) {
             OutlinedTextField(
                 value = newPin,
                 onValueChange = {
-
-                    newPin = it
-                        .filter(Char::isDigit)
-                        .take(4)
-
+                    newPin = it.filter(Char::isDigit).take(4)
                     pinMsg = null
                 },
                 label = { Text("New 4-digit PIN") },
@@ -120,17 +107,11 @@ fun AdminSettingsScreen(onBack: () -> Unit) {
 
             Button(
                 onClick = {
-
                     if (newPin.length == 4) {
-
                         CaregiverPrefs.setPin(ctx, newPin)
-
                         pinMsg = "PIN updated"
-
                         newPin = ""
-
                     } else {
-
                         pinMsg = "PIN must be 4 digits"
                     }
                 },
@@ -140,32 +121,37 @@ fun AdminSettingsScreen(onBack: () -> Unit) {
             }
 
             if (pinMsg != null) {
-
                 Spacer(Modifier.height(8.dp))
-
                 Text(
                     pinMsg!!,
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-        }
-    }
-    val context = LocalContext.current
-    var kiosk by remember { mutableStateOf(CaregiverPrefs.isKioskEnabled(context)) }
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
+            Spacer(Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
 
-        Text("Keep app always open")
+            Text(
+                "App Lock Mode",
+                style = MaterialTheme.typography.titleMedium
+            )
 
-        Switch(
-            checked = kiosk,
-            onCheckedChange = {
-                kiosk = it
-                CaregiverPrefs.setKioskEnabled(context, it)
+            Spacer(Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Keep app always open")
+                Switch(
+                    checked = kiosk,
+                    onCheckedChange = {
+                        kiosk = it
+                        CaregiverPrefs.setKioskEnabled(ctx, it)
+                    }
+                )
             }
-        )
+        }
     }
 }

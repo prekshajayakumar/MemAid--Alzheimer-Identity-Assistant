@@ -1,12 +1,15 @@
 package com.example.myapplication.ui.patient
 
+import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -15,6 +18,27 @@ fun RecognizedPersonScreen(
     relation: String?,
     onDone: () -> Unit
 ) {
+    val context = LocalContext.current
+
+    DisposableEffect(Unit) {
+        var localTts: TextToSpeech? = null
+
+        localTts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                localTts?.language = Locale.getDefault()
+                val spoken = relation?.takeIf { it.isNotBlank() }?.let {
+                    "This is $name. Relation: $it."
+                } ?: "This is $name."
+                localTts?.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "recognized_person")
+            }
+        }
+
+        onDispose {
+            localTts?.stop()
+            localTts?.shutdown()
+        }
+    }
+
     LaunchedEffect(Unit) {
         delay(3000)
         onDone()

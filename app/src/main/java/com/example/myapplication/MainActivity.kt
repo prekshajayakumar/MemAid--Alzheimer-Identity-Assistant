@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,11 +60,11 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import kotlinx.coroutines.flow.first
 
 private enum class Screen {
     PATIENT_HOME,
@@ -149,6 +150,27 @@ class MainActivity : ComponentActivity() {
                     var postEventSummaryIds by remember { mutableStateOf<List<String>>(emptyList()) }
 
                     var screen by remember { mutableStateOf(Screen.PATIENT_HOME) }
+                    var summaryShownOnce by remember { mutableStateOf(false) }
+
+
+                    val kioskEnabled = CaregiverPrefs.isKioskEnabled(applicationContext)
+
+                    if (
+                        kioskEnabled &&
+                        (
+                                screen == Screen.PATIENT_HOME ||
+                                        screen == Screen.CAMERA ||
+                                        screen == Screen.UNKNOWN ||
+                                        screen == Screen.REMEMBER_SAVED ||
+                                        screen == Screen.RECOGNIZED ||
+                                        screen == Screen.POST_EVENT_SUMMARY ||
+                                        screen == Screen.TODAY_SUMMARY
+                                )
+                    ) {
+                        BackHandler(enabled = true) {
+                            // Block Android back on patient-facing screens when kiosk mode is enabled.
+                        }
+                    }
 
                     var lastCapturedPath by remember { mutableStateOf<String?>(null) }
                     var lastFaceCropPath by remember { mutableStateOf<String?>(null) }
@@ -255,16 +277,18 @@ class MainActivity : ComponentActivity() {
                     }
 
                     LaunchedEffect(screen) {
-                        if (screen == Screen.PATIENT_HOME) {
+                        if (screen == Screen.PATIENT_HOME && !summaryShownOnce) {
                             val since = System.currentTimeMillis() - 12 * 60 * 60 * 1000L
                             val events = deviationEventRepo.recentUnresolvedSince(since)
                             if (events.isNotEmpty()) {
                                 postEventSummary = PostEventSummaryBuilder.build(events)
                                 postEventSummaryIds = events.map { it.eventId }
+                                summaryShownOnce = true
                                 screen = Screen.POST_EVENT_SUMMARY
                             }
                         }
                     }
+
 
                     Scaffold(
                         snackbarHost = { SnackbarHost(hostState = snack) }
@@ -289,25 +313,22 @@ class MainActivity : ComponentActivity() {
                                 )
 
                                 Screen.TODAY_SUMMARY -> {
-
                                     var summary by remember { mutableStateOf("Loading...") }
 
                                     LaunchedEffect(Unit) {
-
                                         val since = System.currentTimeMillis() - (24 * 60 * 60 * 1000L)
 
-                                        val events =
-                                            deviationEventRepo.recentUnresolvedSince(since)
+                                        val events = deviationEventRepo.recentUnresolvedSince(since)
 
-                                        val recognitionLogs =
-                                            db.recognitionLogDao()
-                                                .observeLatest(limit = 200)
-                                                .first()
+                                        val recognitionLogs = db.recognitionLogDao()
+                                            .observeLatest(limit = 200)
+                                            .first()
+
                                         val routinesToday = all
 
                                         summary = DailySummaryBuilder.build(
                                             routines = routinesToday,
-                                            recognitionLogs = recognitionLogs ?: emptyList(),
+                                            recognitionLogs = recognitionLogs,
                                             events = events
                                         )
                                     }
@@ -389,7 +410,9 @@ class MainActivity : ComponentActivity() {
 
                                             logRecognition(
                                                 outcome = RecognitionOutcome.RECOGNIZED,
-                                                imagePath = winner.strongCropPaths.firstOrNull() ?: lastFaceCropPath ?: lastCapturedPath,
+                                                imagePath = winner.strongCropPaths.firstOrNull()
+                                                    ?: lastFaceCropPath
+                                                    ?: lastCapturedPath,
                                                 bestScore = winner.bestScore,
                                                 personId = winner.personId
                                             )
@@ -471,6 +494,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                             postEventSummary = null
                                             postEventSummaryIds = emptyList()
+                                            summaryShownOnce = false
                                             screen = Screen.PATIENT_HOME
                                         }
                                     }
