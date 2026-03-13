@@ -3,7 +3,6 @@ package com.example.myapplication
 import android.Manifest
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,15 +15,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.db.AppDb
 import com.example.myapplication.data.entities.DeviationEventEntity
 import com.example.myapplication.data.entities.DeviationEventType
-import com.example.myapplication.data.entities.RecognitionLogEntity
-import com.example.myapplication.data.entities.RecognitionOutcome
+import com.example.myapplication.data.entities.PersonEntity
 import com.example.myapplication.data.repo.DeviationEventRepository
-import com.example.myapplication.data.repo.LogsRepository
 import com.example.myapplication.data.repo.PeopleRepository
 import com.example.myapplication.ml.FaceCropper
 import com.example.myapplication.ml.FaceRecognitionEngine
 import com.example.myapplication.receiver.DeviationMonitorService
 import com.example.myapplication.ui.admin.AdminDashboardScreen
+import com.example.myapplication.ui.admin.AdminLibraryScreen
 import com.example.myapplication.ui.admin.AdminLogsScreen
 import com.example.myapplication.ui.admin.AdminPeopleScreen
 import com.example.myapplication.ui.admin.AdminPinScreen
@@ -40,10 +38,11 @@ import com.example.myapplication.ui.routine.AdminRoutineScreen
 import com.example.myapplication.ui.routine.RoutineViewModel
 import com.example.myapplication.util.CallCaregiver
 import com.example.myapplication.util.CaregiverPrefs
+import com.example.myapplication.util.ImageBitmapUtils
 import com.example.myapplication.util.PostEventSummaryBuilder
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,10 +59,63 @@ private enum class Screen {
     ADMIN_PIN,
     ADMIN_DASHBOARD,
     ADMIN_PEOPLE,
+    ADMIN_LIBRARY,
     ADMIN_ROUTINE,
     ADMIN_SETTINGS,
     ADMIN_LOGS,
     ADMIN_CAPTURE_MORE_PHOTOS,
+}
+
+private data class BurstShotResult(
+    val sourcePath: String,
+    val cropPath: String?,
+    val personId: String?,
+    val score: Float
+)
+
+private data class BurstAggregate(
+    val personId: String,
+    val votes: Int,
+    val bestScore: Float,
+    val avgScore: Float,
+    val finalScore: Float
+)
+
+private fun chooseBurstWinner(results: List<BurstShotResult>): BurstAggregate? {
+    val positives = results.filter { it.personId != null }
+    if (positives.isEmpty()) return null
+
+    val ranked = positives
+        .groupBy { it.personId!! }
+        .map { (personId, shots) ->
+            val votes = shots.size
+            val bestScore = shots.maxOf { it.score }
+            val avgScore = shots.map { it.score }.average().toFloat()
+            val finalScore = (votes * 0.20f) + (bestScore * 0.55f) + (avgScore * 0.25f)
+
+            BurstAggregate(
+                personId = personId,
+                votes = votes,
+                bestScore = bestScore,
+                avgScore = avgScore,
+                finalScore = finalScore
+            )
+        }
+        .sortedWith(
+            compareByDescending<BurstAggregate> { it.votes }
+                .thenByDescending { it.finalScore }
+        )
+
+    val best = ranked.firstOrNull() ?: return null
+    val second = ranked.getOrNull(1)
+
+    val clearWinner =
+        best.votes >= 2 || best.bestScore >= 0.84f
+
+    val separated =
+        second == null || (best.finalScore - second.finalScore) >= 0.06f
+
+    return if (clearWinner && separated) best else null
 }
 
 class MainActivity : ComponentActivity() {
@@ -83,7 +135,6 @@ class MainActivity : ComponentActivity() {
 
                     val db = remember { AppDb.get(applicationContext) }
                     val peopleRepo = remember { PeopleRepository(db) }
-                    val logsRepo = remember { LogsRepository(db.recognitionLogDao()) }
                     val deviationEventRepo = remember { DeviationEventRepository(db.deviationEventDao()) }
 
                     val recogEngine = remember { FaceRecognitionEngine(applicationContext) }
@@ -104,6 +155,9 @@ class MainActivity : ComponentActivity() {
 
                     var adminAuthedAt by remember { mutableStateOf<Long?>(null) }
                     val ADMIN_TIMEOUT_MS = 2 * 60 * 1000L
+
+                    var captureTargetPersonId by remember { mutableStateOf<String?>(null) }
+                    var captureIntoActiveLibrary by remember { mutableStateOf(false) }
 
                     val locationPermissions = rememberMultiplePermissionsState(
                         permissions = listOf(
@@ -126,7 +180,6 @@ class MainActivity : ComponentActivity() {
                             stopService(intent)
                         }
                     }
-                    var pendingCapturePersonId by remember { mutableStateOf<String?>(null) }
 
                     fun isAdminExpired(): Boolean {
                         val t = adminAuthedAt ?: return true
@@ -173,25 +226,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    fun logRecognition(
-                        outcome: RecognitionOutcome,
-                        imagePath: String?,
-                        bestScore: Float?,
-                        personId: String?
-                    ) {
-                        scope.launch {
-                            logsRepo.insert(
-                                RecognitionLogEntity(
-                                    outcome = outcome,
-                                    bestScore = bestScore,
-//                                    threshold = 0.80f,
-                                    personId = personId,
-                                    imagePath = imagePath
-                                )
-                            )
-                        }
-                    }
-
                     LaunchedEffect(screen) {
                         if (screen == Screen.PATIENT_HOME) {
                             val since = System.currentTimeMillis() - 12 * 60 * 60 * 1000L
@@ -224,44 +258,69 @@ class MainActivity : ComponentActivity() {
                                 )
 
                                 Screen.CAMERA -> CameraScreen(
-                                    onImageCaptured = { path ->
-                                        lastCapturedPath = path
+                                    burstCount = 3,
+                                    onImagesCaptured = { paths ->
+                                        lastCapturedPath = paths.firstOrNull()
 
                                         scope.launch(Dispatchers.Default) {
-                                            val bmp = BitmapFactory.decodeFile(path)
-                                            if (bmp == null) {
-                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                            val shotResults = mutableListOf<BurstShotResult>()
+
+                                            for (path in paths) {
+                                                val bmp = ImageBitmapUtils.decodeUprightBitmap(path) ?: continue
+
+                                                val previewRect = FaceCropper.detectLargestFace(bmp)
+                                                val previewFace = previewRect?.let { FaceCropper.cropSquare(bmp, it) }
+                                                val cropPath = previewFace?.let { saveFaceCrop(it) }
+
+                                                val result = recogEngine.recognizeFromPhoto(bmp)
+
+                                                shotResults += BurstShotResult(
+                                                    sourcePath = path,
+                                                    cropPath = cropPath,
+                                                    personId = result.personId,
+                                                    score = result.bestScore
+                                                )
+                                            }
+
+                                            val bestCropOverall = shotResults
+                                                .filter { it.cropPath != null }
+                                                .maxByOrNull { it.score }
+                                                ?.cropPath
+
+                                            lastFaceCropPath = bestCropOverall
+
+                                            val winner = chooseBurstWinner(shotResults)
+
+                                            if (winner == null) {
+                                                withContext(Dispatchers.Main) {
+                                                    screen = Screen.UNKNOWN
+                                                }
                                                 return@launch
                                             }
 
-                                            val rect = FaceCropper.detectLargestFace(bmp)
-                                            val face = rect?.let { FaceCropper.crop(bmp, it) }
-
-                                            lastFaceCropPath = face?.let { saveFaceCrop(it) }
-
-                                            if (face == null) {
-                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
+                                            val person = db.personDao().getById(winner.personId)
+                                            if (person == null || person.name.isNullOrBlank()) {
+                                                withContext(Dispatchers.Main) {
+                                                    screen = Screen.UNKNOWN
+                                                }
                                                 return@launch
                                             }
 
-                                            val result = recogEngine.recognize(face)
-                                            android.util.Log.d("FaceRecognition", "MainActivity result personId=${result.personId} score=${result.bestScore}")
+                                            val bestWinningShot = shotResults
+                                                .filter { it.personId == winner.personId && it.cropPath != null }
+                                                .maxByOrNull { it.score }
 
-                                            if (result.personId == null) {
-                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                return@launch
+                                            if (bestWinningShot != null && bestWinningShot.score >= 0.84f) {
+                                                peopleRepo.appendConfirmedFaceCrop(
+                                                    appContext = applicationContext,
+                                                    personId = winner.personId,
+                                                    cropPath = bestWinningShot.cropPath!!
+                                                )
                                             }
-
-                                            val person = db.personDao().getById(result.personId)
-
-                                            if (person?.name.isNullOrBlank()) {
-                                                withContext(Dispatchers.Main) { screen = Screen.UNKNOWN }
-                                                return@launch
-                                            }
-
+                                            val safePerson = person
                                             withContext(Dispatchers.Main) {
-                                                recognizedName = person!!.name
-                                                recognizedRelation = person.relation
+                                                recognizedName = safePerson.name
+                                                recognizedRelation = safePerson.relation
                                                 screen = Screen.RECOGNIZED
                                             }
                                         }
@@ -347,6 +406,7 @@ class MainActivity : ComponentActivity() {
                                         touchAdminSession()
                                         AdminDashboardScreen(
                                             onPeople = { screen = Screen.ADMIN_PEOPLE },
+                                            onLibrary = { screen = Screen.ADMIN_LIBRARY },
                                             onRoutine = { screen = Screen.ADMIN_ROUTINE },
                                             onSettings = { screen = Screen.ADMIN_SETTINGS },
                                             onExit = {
@@ -390,7 +450,8 @@ class MainActivity : ComponentActivity() {
                                         photoPathByPersonId = photoPathByPersonId,
                                         photoCountByPersonId = photoCountByPersonId,
                                         onCaptureMorePhotos = { personId ->
-                                            pendingCapturePersonId = personId
+                                            captureTargetPersonId = personId
+                                            captureIntoActiveLibrary = false
                                             screen = Screen.ADMIN_CAPTURE_MORE_PHOTOS
                                         },
                                         onApprove = { id, name, relation ->
@@ -403,7 +464,7 @@ class MainActivity : ComponentActivity() {
                                                 )
 
                                                 if (!approved) {
-                                                    snack.showSnackbar("Couldn’t create face vectors. Try clearer photos.")
+                                                    snack.showSnackbar("Couldn’t create face vectors. Try a clearer single-face photo.")
                                                 }
                                             }
                                         },
@@ -411,21 +472,73 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
+                                Screen.ADMIN_LIBRARY -> {
+                                    val activePeople by peopleRepo.active()
+                                        .collectAsState(initial = emptyList())
+
+                                    val photoCountByPersonId by produceState<Map<String, Int>>(
+                                        initialValue = emptyMap(),
+                                        key1 = activePeople
+                                    ) {
+                                        value = activePeople.associate { person ->
+                                            person.personId to db.galleryDao().listForPerson(person.personId).size
+                                        }
+                                    }
+
+                                    val vectorCountByPersonId by produceState<Map<String, Int>>(
+                                        initialValue = emptyMap(),
+                                        key1 = activePeople
+                                    ) {
+                                        value = activePeople.associate { person ->
+                                            person.personId to db.vectorDao().vectorsForPerson(person.personId).size
+                                        }
+                                    }
+
+                                    AdminLibraryScreen(
+                                        people = activePeople,
+                                        photoCountByPersonId = photoCountByPersonId,
+                                        vectorCountByPersonId = vectorCountByPersonId,
+                                        onAddMorePhotos = { personId ->
+                                            captureTargetPersonId = personId
+                                            captureIntoActiveLibrary = true
+                                            screen = Screen.ADMIN_CAPTURE_MORE_PHOTOS
+                                        },
+                                        onBack = { screen = Screen.ADMIN_DASHBOARD }
+                                    )
+                                }
+
                                 Screen.ADMIN_CAPTURE_MORE_PHOTOS -> CameraScreen(
-                                    onImageCaptured = { path ->
-                                        val targetId = pendingCapturePersonId
+                                    burstCount = 3,
+                                    onImagesCaptured = { paths ->
+                                        val targetId = captureTargetPersonId
                                         if (targetId == null) {
-                                            screen = Screen.ADMIN_PEOPLE
+                                            screen = Screen.ADMIN_DASHBOARD
                                             return@CameraScreen
                                         }
 
                                         scope.launch {
-                                            peopleRepo.addPhotosToPending(targetId, listOf(path))
-                                            snack.showSnackbar("Photo added.")
-                                            screen = Screen.ADMIN_PEOPLE
+                                            if (captureIntoActiveLibrary) {
+                                                val added = peopleRepo.addPhotosToExistingPersonAndEmbed(
+                                                    appContext = applicationContext,
+                                                    personId = targetId,
+                                                    imagePaths = paths
+                                                )
+                                                snack.showSnackbar("Added $added usable sample(s).")
+                                                screen = Screen.ADMIN_LIBRARY
+                                            } else {
+                                                peopleRepo.addPhotosToPending(targetId, paths)
+                                                snack.showSnackbar("Photo(s) added.")
+                                                screen = Screen.ADMIN_PEOPLE
+                                            }
                                         }
                                     },
-                                    onCancel = { screen = Screen.ADMIN_PEOPLE }
+                                    onCancel = {
+                                        screen = if (captureIntoActiveLibrary) {
+                                            Screen.ADMIN_LIBRARY
+                                        } else {
+                                            Screen.ADMIN_PEOPLE
+                                        }
+                                    }
                                 )
 
                                 Screen.ADMIN_ROUTINE -> {

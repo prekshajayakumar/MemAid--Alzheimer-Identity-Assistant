@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.ksp) // KSP instead of kapt
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -27,15 +27,22 @@ android {
         }
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+    }
 
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 
     packaging {
         resources.excludes.add("META-INF/AL2.0")
@@ -44,7 +51,6 @@ android {
 }
 
 dependencies {
-    // Compose
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
@@ -55,47 +61,36 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
-    // Room + KSP (no kapt)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
-    // SQLCipher (encrypted SQLite) + compat
     implementation(libs.sqlcipher)
     implementation(libs.androidx.sqlite)
 
-    // Coroutines
     implementation(libs.coroutines.android)
-
-    // (later) permissions helper
     implementation(libs.accompanist.permissions)
 
-    // tests
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.espresso.core)
 
     implementation("com.google.android.material:material:1.12.0")
 
-    //camera stuff
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
 
-    //encryption
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
-    //ML model stuff
     implementation("com.google.mlkit:face-detection:16.1.7")
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 
-    //location
     implementation("com.google.android.gms:play-services-location:21.3.0")
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 }

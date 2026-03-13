@@ -67,9 +67,9 @@ object FaceQuality {
         val brightness = mean
 
         val accepted =
-            brightness in 30f..235f &&
-                    contrast >= 120f &&
-                    sharpness >= 6f
+            brightness in 35f..225f &&
+                    contrast >= 55f &&
+                    sharpness >= 5.5f
 
         return FaceQualityResult(
             accepted = accepted,

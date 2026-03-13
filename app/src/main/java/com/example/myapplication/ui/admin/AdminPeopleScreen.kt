@@ -81,11 +81,8 @@ private fun PendingPersonCard(
         }
     }
 
-    val minSamples = 3
-
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-
             Text("New Person", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
 
@@ -108,14 +105,14 @@ private fun PendingPersonCard(
             Spacer(Modifier.height(8.dp))
 
             Text(
-                text = "Samples captured: $photoCount",
+                text = "Photos captured: $photoCount",
                 style = MaterialTheme.typography.bodyMedium
             )
 
-            if (photoCount < minSamples) {
+            if (photoCount < 2) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Capture at least $minSamples photos for better recognition.",
+                    text = "One photo is enough. More photos improve recognition.",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -153,7 +150,7 @@ private fun PendingPersonCard(
             Spacer(Modifier.height(12.dp))
 
             Button(
-                enabled = name.isNotBlank() && relation.isNotBlank() && photoCount >= minSamples,
+                enabled = name.isNotBlank() && relation.isNotBlank() && photoCount >= 1,
                 onClick = {
                     onApprove(person.personId, name.trim(), relation.trim())
                 },

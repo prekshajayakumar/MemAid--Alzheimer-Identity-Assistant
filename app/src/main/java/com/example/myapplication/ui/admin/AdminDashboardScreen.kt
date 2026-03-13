@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AdminDashboardScreen(
     onPeople: () -> Unit,
+    onLibrary: () -> Unit,
     onRoutine: () -> Unit,
     onSettings: () -> Unit,
     onExit: () -> Unit,
@@ -30,6 +31,11 @@ fun AdminDashboardScreen(
         }
         Spacer(Modifier.height(12.dp))
 
+        Button(onClick = onLibrary, modifier = Modifier.fillMaxWidth()) {
+            Text("People Library")
+        }
+        Spacer(Modifier.height(12.dp))
+
         Button(onClick = onRoutine, modifier = Modifier.fillMaxWidth()) {
             Text("Routine")
         }
@@ -40,14 +46,13 @@ fun AdminDashboardScreen(
         }
         Spacer(Modifier.height(12.dp))
 
-        OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
-            Text("Exit Admin")
-        }
-
-        Spacer(Modifier.height(12.dp))
-
         Button(onClick = onLogs, modifier = Modifier.fillMaxWidth()) {
             Text("Recognition Logs")
+        }
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
+            Text("Exit Admin")
         }
     }
 }

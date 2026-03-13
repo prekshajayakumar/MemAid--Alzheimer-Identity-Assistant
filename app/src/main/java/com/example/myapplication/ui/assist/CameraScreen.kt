@@ -20,16 +20,20 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.coroutines.resume
 
 @OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun CameraScreen(
-    onImageCaptured: (String) -> Unit,
-    onCancel: () -> Unit
+    onImagesCaptured: (List<String>) -> Unit,
+    onCancel: () -> Unit,
+    burstCount: Int = 3
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -107,9 +111,11 @@ fun CameraScreen(
         },
         snackbarHost = { SnackbarHost(snack) }
     ) { padding ->
-        Column(Modifier
-            .fillMaxSize()
-            .padding(padding)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
             AndroidView(
                 modifier = Modifier
                     .weight(1f)
@@ -128,57 +134,67 @@ fun CameraScreen(
                 if (isProcessing) {
                     CircularProgressIndicator()
                     Spacer(Modifier.height(8.dp))
-                    Text("Scanning…")
+                    Text("Capturing $burstCount shots…")
                     Spacer(Modifier.height(8.dp))
                 }
 
                 Button(
                     enabled = !isProcessing,
                     onClick = {
-                        isProcessing = true
-                        captureToAppPictures(
-                            context = context,
-                            controller = controller,
-                            onSaved = { uri ->
-                                isProcessing = false
-                                val path = uri?.path
-                                if (path.isNullOrBlank()) {
-                                    scope.launch {
-                                        snack.showSnackbar("Couldn’t save photo.")
-                                    }
-                                } else {
-                                    onImageCaptured(path)
-                                }
-                            },
-                            onError = { e ->
-                                isProcessing = false
-                                scope.launch {
-                                    snack.showSnackbar("Capture failed: ${e.message ?: "unknown"}")
-                                }
+                        scope.launch {
+                            isProcessing = true
+                            val paths = captureBurstToAppPictures(
+                                context = context,
+                                controller = controller,
+                                burstCount = burstCount
+                            )
+                            isProcessing = false
+
+                            if (paths.isEmpty()) {
+                                snack.showSnackbar("Couldn’t capture usable photos.")
+                            } else {
+                                onImagesCaptured(paths)
                             }
-                        )
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (isProcessing) "Please wait…" else "Capture")
+                    Text(if (isProcessing) "Please wait…" else "Capture ($burstCount shots)")
                 }
             }
         }
     }
 }
 
-private fun captureToAppPictures(
+private suspend fun captureBurstToAppPictures(
     context: Context,
     controller: LifecycleCameraController,
-    onSaved: (Uri?) -> Unit,
-    onError: (ImageCaptureException) -> Unit
-) {
-    val picturesDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES) ?: run {
-        onError(ImageCaptureException(ImageCapture.ERROR_FILE_IO, "No dir", null))
-        return
+    burstCount: Int
+): List<String> {
+    val saved = mutableListOf<String>()
+
+    repeat(burstCount) {
+        val path = captureSingleToAppPictures(context, controller)
+        if (path != null) saved += path
+        delay(300)
     }
 
-    val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+    return saved
+}
+
+private suspend fun captureSingleToAppPictures(
+    context: Context,
+    controller: LifecycleCameraController
+): String? = suspendCancellableCoroutine { cont ->
+
+    val picturesDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+    if (picturesDir == null) {
+        cont.resume(null)
+        return@suspendCancellableCoroutine
+    }
+
+    val name = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US)
+        .format(System.currentTimeMillis())
     val file = File(picturesDir, "memaid_$name.jpg")
 
     val output = ImageCapture.OutputFileOptions.Builder(file).build()
@@ -188,11 +204,11 @@ private fun captureToAppPictures(
         ContextCompat.getMainExecutor(context),
         object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(result: ImageCapture.OutputFileResults) {
-                onSaved(Uri.fromFile(file))
+                cont.resume(Uri.fromFile(file).path)
             }
 
             override fun onError(exception: ImageCaptureException) {
-                onError(exception)
+                cont.resume(null)
             }
         }
     )
